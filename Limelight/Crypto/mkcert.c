@@ -6,10 +6,8 @@
 
 #include <openssl/evp.h>
 #include <openssl/pem.h>
-#include <OpenSSL/provider.h>
-#include <OpenSSL/rsa.h>
 #include <openssl/x509.h>
-#include <OpenSSL/rand.h>
+#include <openssl/rand.h>
 
 static const int NUM_BITS = 2048;
 static const int SERIAL = 0;
