@@ -94,7 +94,7 @@
     req.HTTPBody = [body dataUsingEncoding:NSUTF8StringEncoding];
 
     NSMutableURLRequest *capturedReq = req;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)),
                    dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         InsecurePinDelegate *delegate = [[InsecurePinDelegate alloc] init];
         NSURLSession *session = [NSURLSession sessionWithConfiguration:[NSURLSessionConfiguration defaultSessionConfiguration]
