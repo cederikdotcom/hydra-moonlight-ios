@@ -80,6 +80,17 @@ Consumed as a git submodule by `cederikdotcom/hydraheadipad` at `Vendors/hydra-m
 - If the iPad shows a stuck black screen with no video after connecting: force-kill the app and reinstall v0.2.80+ which has this fix.
 - After this fix, failed connections surface a clear error message (e.g. port blocked, launch failed) on the experience grid instead of being invisible.
 
+**Stream shows "Starting [app]..." for 30-60 seconds then fails (or never shows error)**
+- Cause: `StreamFrameViewController -connectionTerminated:` and `-stageFailed:` both call `LiTestClientConnectivity("ios.conntest.moonlight-stream.org", 443, portFlags)` **synchronously** before dispatching to the main queue. On a closed venue LAN without internet access, DNS resolution for `ios.conntest.moonlight-stream.org` fails or times out (30-60 seconds). The error message is suppressed for that entire window — the user sees the loading screen frozen on "Starting [app]...".
+- Fixed (committed ce6a0d1): both `LiTestClientConnectivity` calls replaced with the constant `ML_TEST_RESULT_INCONCLUSIVE`. The error message now appears within 2-3 seconds of the failure. The connectivity hint ("ports blocked by your network") is omitted, but port flags from `LiStringifyPortFlags` still appear in the error detail — sufficient for venue LAN diagnosis.
+- If errors reappear as slow: check whether upstream sync re-introduced the `LiTestClientConnectivity` calls in `StreamFrameViewController.m`. Grep for `LiTestClientConnectivity` — it must not appear in that file.
+
+**Stream connected, Sunshine streaming indefinitely, iPad shows black screen / no video and no error**
+- Cause: iOS VideoToolbox rejects the HEVC (H.265) VPS/SPS/PPS parameter sets produced by certain NVENC encoder configurations (RTX 4000+/Blackwell generation). `CMVideoFormatDescriptionCreateFromHEVCParameterSets` returns a non-zero status → `VideoDecoderRenderer.submitDecodeBuffer` returns `DR_NEED_IDR` on every frame → moonlight-common-c requests a new IDR from Sunshine in an infinite loop. The RTSP/control connection stays alive (Sunshine keeps streaming, `stream_count` stays at 1), but `AVSampleBufferDisplayLayer.hidden` is never set to `NO` because no IDR ever successfully decodes. No `connectionTerminated:` fires, so the error callback is never triggered.
+- Fixed (committed ce6a0d1): `config.supportedVideoFormats = VIDEO_FORMAT_H264` in `HydraStreamSession.m`. Forcing H.264 eliminates the NVENC/VideoToolbox incompatibility. Sunshine encodes in H.264 which iOS has decoded reliably since A7.
+- To re-enable HEVC later: test with `VIDEO_FORMAT_H265 | VIDEO_FORMAT_H264` on a known-good body (non-Blackwell NVENC or AMD). If HEVC works, confirm by checking Sunshine logs for `video codec: hevc` — if H.264 is always selected, Sunshine's encoder may not support HEVC negotiation at the configured resolution/bitrate.
+- Distinguishing from stuck modal bug (v0.2.79 and earlier): the old bug showed a black screen after the connection was already terminated; this bug shows a black screen while Sunshine is actively streaming (check `stream_count` on the body node via HydraCluster API).
+
 **Pairing always triggers the full handshake (never hits the fast path)**
 - `HydraPairSession` now unpairs automatically when `alreadyPaired` fires, so every session where no cached cert exists performs a fresh pair.
 - This is expected after `resetEnrollment` (re-enroll gesture: 3-second long-press on the experience grid) or after deleting and reinstalling the app.
