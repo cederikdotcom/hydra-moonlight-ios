@@ -74,6 +74,12 @@ Consumed as a git submodule by `cederikdotcom/hydraheadipad` at `Vendors/hydra-m
 - Fixed: `StreamManager.main()` now queries `/applist` (HTTPS on port 47984) using `newAppListRequest` + `AppListResponse`, finds the `TemporaryApp` with `name == config.appName`, and sets `config.appID = app.id` before calling `launchApp`.
 - If the applist lookup fails or the app name has no match, `config.appID` stays as `@"0"` and the launch will fail with the same error — verify the `appName` passed to `HydraStreamSession` matches the app title exactly as registered in Sunshine.
 
+**Stream connected, Sunshine streaming, but iPad shows black screen / no video**
+- Cause: `returnToMainFrame` in `StreamFrameViewController` only calls `[self.navigationController popToRootViewControllerAnimated:YES]`. Since HydraHeadiPad presents the VC as a UIKit modal (not on a nav stack), `self.navigationController` is nil — the call is a complete no-op. When the Limelight connection terminates for any reason (error, graceful, timeout), `returnToMainFrame` fires but the VC stays on screen in a stuck/blank state. `ML_ERROR_GRACEFUL_TERMINATION` additionally skips `hydraErrorCallback` entirely, so even the error callback path doesn't fire.
+- Fixed: `StreamFrameViewController` now has a `hydraReturnToMainFrame` block property. `HydraStreamSession` sets this block to call `[s stop]`, which properly dismisses the modal VC and fires `streamSessionDidStop` → Swift state resets. `StreamSessionBridge` now has a `hasReportedTermination` guard to prevent double-callback when both `hydraErrorCallback` and the subsequent stop fire.
+- If the iPad shows a stuck black screen with no video after connecting: force-kill the app and reinstall v0.2.80+ which has this fix.
+- After this fix, failed connections surface a clear error message (e.g. port blocked, launch failed) on the experience grid instead of being invisible.
+
 **Pairing always triggers the full handshake (never hits the fast path)**
 - `HydraPairSession` now unpairs automatically when `alreadyPaired` fires, so every session where no cached cert exists performs a fresh pair.
 - This is expected after `resetEnrollment` (re-enroll gesture: 3-second long-press on the experience grid) or after deleting and reinstalling the app.

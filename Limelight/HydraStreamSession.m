@@ -72,6 +72,16 @@
         }
     };
 
+    // returnToMainFrame in the upstream Moonlight VC only pops a navigation stack.
+    // Since we present it as a modal, that call is a no-op. This block receives that
+    // signal instead and calls stop() which properly dismisses the VC and fires
+    // streamSessionDidStop, resetting the Swift state machine.
+    vc.hydraReturnToMainFrame = ^{
+        HydraStreamSession *s = weakSelf;
+        if (!s) return;
+        [s stop];
+    };
+
     dispatch_async(dispatch_get_main_queue(), ^{
         [presenter presentViewController:vc animated:NO completion:^{
             [self addExitMenuToVC:vc];

@@ -23,6 +23,9 @@
 // Called before the error alert when launchFailed:/stageFailed:/connectionTerminated: fires.
 // HydraStreamSession sets this to route the error message back to the Swift layer.
 @property (nonatomic, copy) void(^hydraErrorCallback)(NSString *title, NSString *message);
+// Called by returnToMainFrame instead of popToRootViewControllerAnimated when set.
+// HydraStreamSession sets this to properly dismiss the modal and notify the Swift layer.
+@property (nonatomic, copy) void(^hydraReturnToMainFrame)(void);
 
 -(void)updatePreferredDisplayMode:(BOOL)streamActive;
 

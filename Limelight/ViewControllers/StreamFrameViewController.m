@@ -312,11 +312,19 @@
 - (void) returnToMainFrame {
     // Reset display mode back to default
     [self updatePreferredDisplayMode:NO];
-    
+
     [_statsUpdateTimer invalidate];
     _statsUpdateTimer = nil;
-    
-    [self.navigationController popToRootViewControllerAnimated:YES];
+
+    if (self.hydraReturnToMainFrame) {
+        // HydraHeadiPad: VC is presented as a modal, not on a nav stack.
+        // Delegate dismissal to HydraStreamSession so it can clean up properly
+        // and fire the Swift delegate callback. Without this, popToRootViewController
+        // is a no-op (no nav controller), leaving the VC stuck on screen.
+        self.hydraReturnToMainFrame();
+    } else {
+        [self.navigationController popToRootViewControllerAnimated:YES];
+    }
 }
 
 // This will fire if the user opens control center or gets a low battery message
