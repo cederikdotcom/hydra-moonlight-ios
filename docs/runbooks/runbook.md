@@ -42,6 +42,11 @@ Consumed as a git submodule by `cederikdotcom/hydraheadipad` at `Vendors/hydra-m
 - Confirm port 47990 is reachable from the iPad (WireGuard tunnel must be up).
 - Check Sunshine logs on the body for PIN mismatch or auth failure.
 
+**Pairing stalls — Sunshine logs show only /serverinfo, never /pair**
+- `HttpManager` was initialized with a wrong `httpsPort` (e.g. 47990) instead of `0`. With a non-zero port it skips auto-discovery and sends HTTPS calls to Sunshine's web UI port instead of the GameStream HTTPS port (47984), so the server cert fetch fails and `/pair` is never reached.
+- Fix: `httpsPort:0` in `HydraPairSession -pairWithCompletion:` lets `HttpManager` read the correct HTTPS port from the HTTP `/serverinfo` XML (`HttpsPort` field, normally 47984).
+- Confirm: `curl http://<host>:47989/serverinfo` and look for `<HttpsPort>`.
+
 **Pairing hangs / times out**
 - Port 47989 blocked — check firewall on body machine.
 - WireGuard not routing traffic — verify `wireguard_ip` in HydraCluster body record resolves correctly.
