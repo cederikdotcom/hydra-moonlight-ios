@@ -61,12 +61,20 @@
 // MARK: - PairCallback
 
 - (void)startPairing:(NSString *)PIN {
-    // Submit the PIN directly to Sunshine's web UI at https://<host>:47990/api/pin.
-    // Port 47990 is network-accessible (not localhost-only) once the iPad is on
-    // WireGuard, so we can POST directly with HTTP Basic auth and accept the
-    // self-signed cert via InsecurePinDelegate.
-    // This runs on PairManager's background thread — use a semaphore to block
-    // until the submission completes so PairManager can continue the handshake.
+    // Submit the PIN to Sunshine's web UI at https://<host>:47990/api/pin.
+    //
+    // Timing is critical: Sunshine only accepts the PIN from /api/pin when a
+    // /pair?phrase=getservercert request is already pending. PairManager calls
+    // startPairing: BEFORE it sends getservercert (it calls startPairing: first,
+    // then /serverinfo, then getservercert). Blocking here means the PIN arrives
+    // at Sunshine before any getservercert is in-flight — Sunshine ignores it and
+    // the getservercert request then waits forever for a PIN that never comes.
+    //
+    // Fix: return immediately so PairManager's thread proceeds to send /serverinfo
+    // and /pair?getservercert. After a short delay the PIN is submitted on a
+    // background queue, arriving at Sunshine while getservercert is pending.
+    // This mirrors hydraheadflatscreen's approach: launch Moonlight → wait 1-2s
+    // for getservercert to reach Sunshine → then POST the PIN.
     NSString *urlStr = [NSString stringWithFormat:@"https://%@:47990/api/pin", self.host];
     NSURL *url = [NSURL URLWithString:urlStr];
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
@@ -74,7 +82,6 @@
     req.timeoutInterval = 20;
     [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
 
-    // HTTP Basic auth: base64(username:password)
     NSString *credentials = [NSString stringWithFormat:@"%@:%@",
                              self.sunshineUsername, self.sunshinePassword];
     NSData *credentialsData = [credentials dataUsingEncoding:NSUTF8StringEncoding];
@@ -85,16 +92,19 @@
     NSString *body = [NSString stringWithFormat:@"{\"pin\":\"%@\"}", PIN];
     req.HTTPBody = [body dataUsingEncoding:NSUTF8StringEncoding];
 
-    InsecurePinDelegate *delegate = [[InsecurePinDelegate alloc] init];
-    NSURLSession *session = [NSURLSession sessionWithConfiguration:[NSURLSessionConfiguration defaultSessionConfiguration]
-                                                          delegate:delegate
-                                                     delegateQueue:nil];
-
-    dispatch_semaphore_t sem = dispatch_semaphore_create(0);
-    [[session dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        dispatch_semaphore_signal(sem);
-    }] resume];
-    dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 25 * NSEC_PER_SEC));
+    NSMutableURLRequest *capturedReq = req;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
+                   dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        InsecurePinDelegate *delegate = [[InsecurePinDelegate alloc] init];
+        NSURLSession *session = [NSURLSession sessionWithConfiguration:[NSURLSessionConfiguration defaultSessionConfiguration]
+                                                              delegate:delegate
+                                                         delegateQueue:nil];
+        [[session dataTaskWithRequest:capturedReq completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+            if (error) {
+                NSLog(@"[HydraPairSession] PIN submission error: %@", error);
+            }
+        }] resume];
+    });
 }
 
 - (void)pairSuccessful:(NSData *)serverCert {
