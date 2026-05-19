@@ -131,21 +131,23 @@
     [self.view addGestureRecognizer:_playPauseTapGestureRecognizer];
 
 #else
-    _exitSwipeRecognizer = [[UIScreenEdgePanGestureRecognizer alloc] initWithTarget:self action:@selector(edgeSwiped)];
-    _exitSwipeRecognizer.edges = UIRectEdgeLeft;
-    _exitSwipeRecognizer.delaysTouchesBegan = NO;
-    _exitSwipeRecognizer.delaysTouchesEnded = NO;
-    
-    [self.view addGestureRecognizer:_exitSwipeRecognizer];
+    // UIScreenEdgePanGestureRecognizer on UIRectEdgeLeft conflicts with iPadOS
+    // Stage Manager and system edge swipe gestures, causing an immediate
+    // accidental exit on every stream start. Replaced with a 2-second long-press
+    // that matches the kiosk UX and doesn't conflict with system gestures.
+    UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc]
+                                               initWithTarget:self action:@selector(edgeSwiped)];
+    longPress.minimumPressDuration = 2.0;
+    [self.view addGestureRecognizer:longPress];
 #endif
-    
+
     _tipLabel = [[UILabel alloc] init];
     [_tipLabel setUserInteractionEnabled:NO];
-    
+
 #if TARGET_OS_TV
     [_tipLabel setText:@"Tip: Tap the Play/Pause button on the Apple TV Remote to disconnect from your PC"];
 #else
-    [_tipLabel setText:@"Tip: Swipe from the left edge to disconnect from your PC"];
+    [_tipLabel setText:@"Tip: Hold for 2 seconds to disconnect"];
 #endif
     
     [_tipLabel sizeToFit];
@@ -363,9 +365,9 @@
     [self returnToMainFrame];
 }
 
-- (void)edgeSwiped {
-    Log(LOG_I, @"User swiped to end stream");
-    
+- (void)edgeSwiped:(UIGestureRecognizer *)recognizer {
+    if (recognizer.state != UIGestureRecognizerStateBegan) return;
+    Log(LOG_I, @"User held to end stream");
     [self returnToMainFrame];
 }
 
