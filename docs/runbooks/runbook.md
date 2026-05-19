@@ -34,6 +34,7 @@ Consumed as a git submodule by `cederikdotcom/hydraheadipad` at `Vendors/hydra-m
 5. The PIN is submitted via `POST https://<host>:47990/api/pin` with `Authorization: Basic <base64(user:pass)>` and `Content-Type: application/json`, body `{"pin":"<PIN>"}`.
 6. Sunshine's self-signed cert is accepted via `InsecurePinDelegate` (TLS validation bypassed for the PIN request only).
 7. On success, `PairCallback -pairSuccessful:` delivers the server certificate for future stream sessions.
+8. If `PairCallback -alreadyPaired` fires (client already registered with Sunshine), `HydraPairSession` sends `GET http://<host>:47989/unpair?uniqueid=<id>` and then re-initiates pairing so the full handshake runs and the server cert is returned. A `hasAttemptedUnpair` flag prevents an infinite loop.
 
 ## Troubleshooting
 
@@ -51,9 +52,10 @@ Consumed as a git submodule by `cederikdotcom/hydraheadipad` at `Vendors/hydra-m
 - Port 47989 blocked — check firewall on body machine.
 - WireGuard not routing traffic — verify `wireguard_ip` in HydraCluster body record resolves correctly.
 
-**"Already paired" on every launch**
-- Expected behavior when the body host hasn't changed — `HydraPairSession` returns the cached cert immediately.
-- If the body was reinstalled/reset, clear pairedHost/pairedCert from UserDefaults via the re-enroll gesture (3-second long-press on the experience grid).
+**Pairing always triggers the full handshake (never hits the fast path)**
+- `HydraPairSession` now unpairs automatically when `alreadyPaired` fires, so every session where no cached cert exists performs a fresh pair.
+- This is expected after `resetEnrollment` (re-enroll gesture: 3-second long-press on the experience grid) or after deleting and reinstalling the app.
+- If pairing loops (alreadyPaired → unpair → alreadyPaired again), check whether `CryptoManager` is generating a new key pair — it should only generate once; `readCertFromFile` must return non-nil on subsequent launches.
 
 ## Updating from upstream
 
