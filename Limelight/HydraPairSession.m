@@ -17,6 +17,7 @@
 @property (nonatomic, copy) NSString *sunshineUsername;
 @property (nonatomic, copy) NSString *sunshinePassword;
 @property (nonatomic, copy) HydraPairCompletion completion;
+@property (nonatomic, assign) BOOL hasAttemptedUnpair;
 @end
 
 @implementation HydraPairSession
@@ -125,11 +126,32 @@
 }
 
 - (void)alreadyPaired {
-    // Already paired — treat as success with no cert (caller uses cached cert).
-    HydraPairCompletion completion = self.completion;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        completion([NSData data], nil);
-    });
+    // alreadyPaired returns no server cert. In the normal flow the caller has a
+    // cached cert from a prior pair, so returning empty Data is fine. But if no
+    // cached cert exists (e.g. after resetEnrollment with same client key still on
+    // disk), we must unpair first so the next pair attempt goes through the full
+    // handshake and returns the server cert.
+    if (self.hasAttemptedUnpair) {
+        // Guard: unpair already tried — return empty cert and let caller handle it.
+        HydraPairCompletion completion = self.completion;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion([NSData data], nil);
+        });
+        return;
+    }
+    self.hasAttemptedUnpair = YES;
+
+    static NSString * const kUniqueIdKey = @"HydraLimelightUniqueId";
+    NSString *uniqueId = [[NSUserDefaults standardUserDefaults] stringForKey:kUniqueIdKey] ?: @"";
+    NSString *urlStr = [NSString stringWithFormat:@"http://%@:47989/unpair?uniqueid=%@", self.host, uniqueId];
+    NSURL *url = [NSURL URLWithString:urlStr];
+    NSURLSession *session = [NSURLSession sharedSession];
+    HydraPairSession *strongSelf = self;
+    [[session dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        // Re-pair regardless of whether unpair succeeded — worst case we get alreadyPaired
+        // again and the guard above returns empty Data.
+        [strongSelf pairWithCompletion:strongSelf.completion];
+    }] resume];
 }
 
 @end
