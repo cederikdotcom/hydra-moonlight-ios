@@ -58,7 +58,9 @@
     [super viewDidAppear:animated];
     
 #if !TARGET_OS_TV
-    [[self revealViewController] setPrimaryViewController:self];
+    // SWRevealViewController drawer is not used in HydraHeadiPad —
+    // revealViewController() traverses the VC hierarchy and may return a
+    // non-SWRevealViewController that crashes on setPrimaryViewController:.
 #endif
 }
 
