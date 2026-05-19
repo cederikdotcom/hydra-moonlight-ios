@@ -34,7 +34,7 @@ Consumed as a git submodule by `cederikdotcom/hydraheadipad` at `Vendors/hydra-m
 5. The PIN is submitted via `POST https://<host>:47990/api/pin` with `Authorization: Basic <base64(user:pass)>` and `Content-Type: application/json`, body `{"pin":"<PIN>"}`.
 6. Sunshine's self-signed cert is accepted via `InsecurePinDelegate` (TLS validation bypassed for the PIN request only).
 7. On success, `PairCallback -pairSuccessful:` delivers the server certificate for future stream sessions.
-8. If `PairCallback -alreadyPaired` fires (client already registered with Sunshine), `HydraPairSession` sends `GET http://<host>:47989/unpair?uniqueid=<id>` and then re-initiates pairing so the full handshake runs and the server cert is returned. A `hasAttemptedUnpair` flag prevents an infinite loop.
+8. If `PairCallback -alreadyPaired` fires (client already registered with Sunshine), `HydraPairSession` sends `GET http://<host>:47989/unpair?uniqueid=0123456789ABCDEF` (the hardcoded uniqueId used by `HttpManager` for all GameStream requests) and then re-initiates pairing so the full handshake runs and the server cert is returned. A `hasAttemptedUnpair` flag prevents an infinite loop.
 
 ## Troubleshooting
 
@@ -63,6 +63,16 @@ Consumed as a git submodule by `cederikdotcom/hydraheadipad` at `Vendors/hydra-m
 - Root cause in old builds: `HydraPairSession -startPairing:` used a `dispatch_after` of 1.0s, which consistently landed after the window.
 - Fixed (committed ba00ade): delay reduced to 0.3s — long enough for PairManager to send `/serverinfo` and `/pair?getservercert`, short enough to arrive before Sunshine times out.
 - If the timeout recurs, check Sunshine's log for the gap between the `/pair?getservercert` line and the "Event timeout" line; the gap is the window size. The `dispatch_after` delay in `HydraPairSession.m` must be smaller than that gap.
+
+**alreadyPaired loop — unpair silently fails, hasAttemptedUnpair fires, returns empty cert**
+- Cause: `HydraPairSession -alreadyPaired` was reading the uniqueId from `NSUserDefaults` via key `HydraLimelightUniqueId`. `HydraHeadiPad` never calls `IdManager.getUniqueId`, so the key is never initialized. The fallback produced an empty string → unpair request `http://host:47989/unpair?uniqueid=` → Sunshine found no client with uniqueid="" → did not unpair → re-pair returned `alreadyPaired` again → `hasAttemptedUnpair` guard fired → empty cert returned.
+- Fixed: hardcoded `@"0123456789ABCDEF"` in the unpair URL (matches `HttpManager`'s hardcoded uniqueId used for all GameStream requests). Sunshine now correctly removes the client from its paired list and the re-pair completes with a real server cert.
+- Do not attempt to fix by calling `IdManager.getUniqueId` — it would generate a random ID different from `0123456789ABCDEF`, so Sunshine still wouldn't find the client to unpair.
+
+**Stream never launches — `launchFailed("Failed to launch app")` fires immediately after pairing**
+- Cause: `config.appID = @"0"` in `HydraStreamSession`. Sunshine assigns large opaque integer IDs to apps at creation time; `appid=0` does not match any user-defined app. Sunshine returned `gameSession=0` → `launchFailed` → `returnToMainFrame`.
+- Fixed: `StreamManager.main()` now queries `/applist` (HTTPS on port 47984) using `newAppListRequest` + `AppListResponse`, finds the `TemporaryApp` with `name == config.appName`, and sets `config.appID = app.id` before calling `launchApp`.
+- If the applist lookup fails or the app name has no match, `config.appID` stays as `@"0"` and the launch will fail with the same error — verify the `appName` passed to `HydraStreamSession` matches the app title exactly as registered in Sunshine.
 
 **Pairing always triggers the full handshake (never hits the fast path)**
 - `HydraPairSession` now unpairs automatically when `alreadyPaired` fires, so every session where no cached cert exists performs a fresh pair.

@@ -141,8 +141,10 @@
     }
     self.hasAttemptedUnpair = YES;
 
-    static NSString * const kUniqueIdKey = @"HydraLimelightUniqueId";
-    NSString *uniqueId = [[NSUserDefaults standardUserDefaults] stringForKey:kUniqueIdKey] ?: @"";
+    // Must use the same uniqueId as HttpManager (hardcoded throughout the Moonlight library).
+    // HydraHeadiPad never calls IdManager.getUniqueId, so the UserDefaults key is never set;
+    // reading it would produce an empty string and Sunshine would ignore the unpair request.
+    NSString *uniqueId = @"0123456789ABCDEF";
     NSString *urlStr = [NSString stringWithFormat:@"http://%@:47989/unpair?uniqueid=%@", self.host, uniqueId];
     NSURL *url = [NSURL URLWithString:urlStr];
     NSURLSession *session = [NSURLSession sharedSession];

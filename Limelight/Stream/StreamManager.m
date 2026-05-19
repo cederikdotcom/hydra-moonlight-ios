@@ -13,6 +13,8 @@
 
 #import "StreamView.h"
 #import "ServerInfoResponse.h"
+#import "AppListResponse.h"
+#import "TemporaryApp.h"
 #import "HttpResponse.h"
 #import "HttpRequest.h"
 #import "IdManager.h"
@@ -79,7 +81,25 @@
     // Populate the config's version fields from serverinfo
     _config.appVersion = appversion;
     _config.gfeVersion = gfeVersion;
-    
+
+    // Resolve the Sunshine app ID by name so callers don't need to know the numeric ID.
+    // Sunshine assigns opaque integer IDs at app creation time; appID=0 is not a valid
+    // stand-in. Without this lookup, /launch always fails with gameSession=0.
+    if (_config.appName.length > 0) {
+        AppListResponse *appListResp = [[AppListResponse alloc] init];
+        [hMan executeRequestSynchronously:[HttpRequest requestForResponse:appListResp
+            withUrlRequest:[hMan newAppListRequest]]];
+        if ([appListResp isStatusOk]) {
+            for (TemporaryApp *app in [appListResp getAppList]) {
+                if ([app.name isEqualToString:_config.appName]) {
+                    _config.appID = app.id;
+                    break;
+                }
+            }
+        }
+        Log(LOG_I, @"Launching appID '%@' for app '%@'", _config.appID, _config.appName);
+    }
+
     // resumeApp and launchApp handle calling launchFailed
     NSString* sessionUrl;
     if ([serverState hasSuffix:@"_SERVER_BUSY"]) {
