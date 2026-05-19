@@ -461,14 +461,19 @@
             }
         }
         
-        UIAlertController* conTermAlert = [UIAlertController alertControllerWithTitle:title
-                                                                              message:message
-                                                                       preferredStyle:UIAlertControllerStyleAlert];
-        [Utils addHelpOptionToDialog:conTermAlert];
-        [conTermAlert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction* action){
+        if (self.hydraErrorCallback) {
+            self.hydraErrorCallback(title, message);
             [self returnToMainFrame];
-        }]];
-        [self presentViewController:conTermAlert animated:YES completion:nil];
+        } else {
+            UIAlertController* conTermAlert = [UIAlertController alertControllerWithTitle:title
+                                                                                  message:message
+                                                                           preferredStyle:UIAlertControllerStyleAlert];
+            [Utils addHelpOptionToDialog:conTermAlert];
+            [conTermAlert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction* action){
+                [self returnToMainFrame];
+            }]];
+            [self presentViewController:conTermAlert animated:YES completion:nil];
+        }
     });
 
     [_streamMan stopStream];
@@ -507,34 +512,42 @@
             message = [message stringByAppendingString:@"\n\nYour device's network connection is blocking Moonlight. Streaming may not work while connected to this network."];
         }
         
-        UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Connection Failed"
-                                                                       message:message
-                                                                preferredStyle:UIAlertControllerStyleAlert];
-        [Utils addHelpOptionToDialog:alert];
-        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction* action){
+        if (self.hydraErrorCallback) {
+            self.hydraErrorCallback(@"Connection Failed", message);
             [self returnToMainFrame];
-        }]];
-        [self presentViewController:alert animated:YES completion:nil];
+        } else {
+            UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Connection Failed"
+                                                                           message:message
+                                                                    preferredStyle:UIAlertControllerStyleAlert];
+            [Utils addHelpOptionToDialog:alert];
+            [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction* action){
+                [self returnToMainFrame];
+            }]];
+            [self presentViewController:alert animated:YES completion:nil];
+        }
     });
-    
+
     [_streamMan stopStream];
 }
 
 - (void) launchFailed:(NSString*)message {
     Log(LOG_I, @"Launch failed: %@", message);
-    
+
     dispatch_async(dispatch_get_main_queue(), ^{
-        // Allow the display to go to sleep now
         [UIApplication sharedApplication].idleTimerDisabled = NO;
-        
-        UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Connection Error"
-                                                                       message:message
-                                                                preferredStyle:UIAlertControllerStyleAlert];
-        [Utils addHelpOptionToDialog:alert];
-        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction* action){
+        if (self.hydraErrorCallback) {
+            self.hydraErrorCallback(@"Connection Error", message);
             [self returnToMainFrame];
-        }]];
-        [self presentViewController:alert animated:YES completion:nil];
+        } else {
+            UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Connection Error"
+                                                                           message:message
+                                                                    preferredStyle:UIAlertControllerStyleAlert];
+            [Utils addHelpOptionToDialog:alert];
+            [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction* action){
+                [self returnToMainFrame];
+            }]];
+            [self presentViewController:alert animated:YES completion:nil];
+        }
     });
 }
 

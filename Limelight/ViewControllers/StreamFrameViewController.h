@@ -20,6 +20,9 @@
 @interface StreamFrameViewController : UIViewController <ConnectionCallbacks, ControllerSupportDelegate, UserInteractionDelegate, UIScrollViewDelegate>
 #endif
 @property (nonatomic) StreamConfiguration* streamConfig;
+// Called before the error alert when launchFailed:/stageFailed:/connectionTerminated: fires.
+// HydraStreamSession sets this to route the error message back to the Swift layer.
+@property (nonatomic, copy) void(^hydraErrorCallback)(NSString *title, NSString *message);
 
 -(void)updatePreferredDisplayMode:(BOOL)streamActive;
 

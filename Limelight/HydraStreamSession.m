@@ -59,6 +59,18 @@
     vc.modalPresentationStyle = UIModalPresentationFullScreen;
     self.streamVC = vc;
 
+    __weak HydraStreamSession *weakSelf = self;
+    vc.hydraErrorCallback = ^(NSString *title, NSString *message) {
+        HydraStreamSession *s = weakSelf;
+        if (!s) return;
+        NSString *combined = [NSString stringWithFormat:@"%@: %@", title, message];
+        NSError *error = [NSError errorWithDomain:@"HydraStream" code:1
+                                         userInfo:@{NSLocalizedDescriptionKey: combined}];
+        if ([s.delegate respondsToSelector:@selector(streamSessionDidFailWithError:)]) {
+            [s.delegate streamSessionDidFailWithError:error];
+        }
+    };
+
     dispatch_async(dispatch_get_main_queue(), ^{
         [presenter presentViewController:vc animated:NO completion:^{
             if ([self.delegate respondsToSelector:@selector(streamSessionDidConnect)]) {
