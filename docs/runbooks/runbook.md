@@ -52,6 +52,12 @@ Consumed as a git submodule by `cederikdotcom/hydraheadipad` at `Vendors/hydra-m
 - Port 47989 blocked — check firewall on body machine.
 - WireGuard not routing traffic — verify `wireguard_ip` in HydraCluster body record resolves correctly.
 
+**Stream never starts — Moonlight polls /serverinfo in a loop, no /launch in Sunshine logs**
+- Cause: `HttpManager` received an empty/nil `serverCert`. The cert-pinning challenge compared against nil, always returned false, and rejected Sunshine's self-signed cert. `StreamManager` couldn't complete the HTTPS `/serverinfo` call on port 47984, called `launchFailed("Failed to connect to PC")`, and `returnToMainFrame` started the Moonlight host browser polling loop.
+- Root trigger: `HydraPairSession -alreadyPaired` returned an empty cert (`[NSData data]`). This happens when `NSAllowsArbitraryLoads` is absent from the host app's `Info.plist` — ATS blocks the HTTP unpair to port 47989, so Sunshine stays paired, PairManager returns `alreadyPaired` again, `hasAttemptedUnpair` guard fires, and an empty cert is returned.
+- Fixed in `HttpManager` (committed a632e7b): cert pinning is skipped when `_serverCert` is nil or empty — Sunshine's self-signed cert is accepted without pinning. Pinning is still enforced when a real cert is present (normal pair path).
+- Prerequisite fix in host app: `NSAllowsArbitraryLoads: true` in `Info.plist` so ATS allows HTTP to port 47989 for pairing and unpair.
+
 **Pairing always triggers the full handshake (never hits the fast path)**
 - `HydraPairSession` now unpairs automatically when `alreadyPaired` fires, so every session where no cached cert exists performs a fresh pair.
 - This is expected after `resetEnrollment` (re-enroll gesture: 3-second long-press on the experience grid) or after deleting and reinstalling the app.
