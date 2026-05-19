@@ -42,12 +42,11 @@
     config.bitRate    = bitrateKbps;
     config.serverCert = serverCert;
 
-    // Prefer HEVC (hardware decoded on all A9+ iPads), fall back to H264
-    if (@available(iOS 11.0, *)) {
-        config.supportedVideoFormats = VIDEO_FORMAT_H265 | VIDEO_FORMAT_H264;
-    } else {
-        config.supportedVideoFormats = VIDEO_FORMAT_H264;
-    }
+    // Force H.264 — HEVC causes a silent DR_NEED_IDR loop with certain NVENC
+    // configurations (RTX 4000+/Blackwell) where iOS VideoToolbox rejects the
+    // VPS/SPS/PPS but moonlight-common-c keeps requesting IDR frames indefinitely.
+    // Re-enable HEVC (VIDEO_FORMAT_H265 | VIDEO_FORMAT_H264) once stream is confirmed.
+    config.supportedVideoFormats = VIDEO_FORMAT_H264;
 
     config.audioConfiguration = 1; // stereo
     config.useFramePacing     = YES;

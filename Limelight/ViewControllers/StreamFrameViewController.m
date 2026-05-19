@@ -405,7 +405,9 @@
     Log(LOG_I, @"Connection terminated: %d", errorCode);
     
     unsigned int portFlags = LiGetPortFlagsFromTerminationErrorCode(errorCode);
-    unsigned int portTestResults = LiTestClientConnectivity(CONN_TEST_SERVER, 443, portFlags);
+    // Skip external connectivity test — venue LAN has no internet; the test blocks
+    // for 30-60s on DNS/TCP timeout and hides all errors from the user.
+    unsigned int portTestResults = ML_TEST_RESULT_INCONCLUSIVE;
     
     dispatch_async(dispatch_get_main_queue(), ^{
         // Allow the display to go to sleep now
@@ -504,7 +506,9 @@
 - (void) stageFailed:(const char*)stageName withError:(int)errorCode portTestFlags:(int)portTestFlags {
     Log(LOG_I, @"Stage %s failed: %d", stageName, errorCode);
     
-    unsigned int portTestResults = LiTestClientConnectivity(CONN_TEST_SERVER, 443, portTestFlags);
+    // Skip external connectivity test — venue LAN has no internet; the test blocks
+    // for 30-60s on DNS/TCP timeout and hides all errors from the user.
+    unsigned int portTestResults = ML_TEST_RESULT_INCONCLUSIVE;
 
     dispatch_async(dispatch_get_main_queue(), ^{
         // Allow the display to go to sleep now
