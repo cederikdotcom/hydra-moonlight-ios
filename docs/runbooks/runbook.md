@@ -58,6 +58,12 @@ Consumed as a git submodule by `cederikdotcom/hydraheadipad` at `Vendors/hydra-m
 - Fixed in `HttpManager` (committed a632e7b): cert pinning is skipped when `_serverCert` is nil or empty — Sunshine's self-signed cert is accepted without pinning. Pinning is still enforced when a real cert is present (normal pair path).
 - Prerequisite fix in host app: `NSAllowsArbitraryLoads: true` in `Info.plist` so ATS allows HTTP to port 47989 for pairing and unpair.
 
+**Pairing fails — Sunshine logs "Event timeout: 0123456789ABCDEF"**
+- Cause: the PIN POST to port 47990 arrived after Sunshine's pairing event window (~0.75s from when it receives `/pair?phrase=getservercert`). Sunshine discards the PIN and the handshake stalls.
+- Root cause in old builds: `HydraPairSession -startPairing:` used a `dispatch_after` of 1.0s, which consistently landed after the window.
+- Fixed (committed ba00ade): delay reduced to 0.3s — long enough for PairManager to send `/serverinfo` and `/pair?getservercert`, short enough to arrive before Sunshine times out.
+- If the timeout recurs, check Sunshine's log for the gap between the `/pair?getservercert` line and the "Event timeout" line; the gap is the window size. The `dispatch_after` delay in `HydraPairSession.m` must be smaller than that gap.
+
 **Pairing always triggers the full handshake (never hits the fast path)**
 - `HydraPairSession` now unpairs automatically when `alreadyPaired` fires, so every session where no cached cert exists performs a fresh pair.
 - This is expected after `resetEnrollment` (re-enroll gesture: 3-second long-press on the experience grid) or after deleting and reinstalling the app.
