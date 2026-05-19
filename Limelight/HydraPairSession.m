@@ -14,21 +14,24 @@
 
 @interface HydraPairSession () <PairCallback>
 @property (nonatomic, copy) NSString *host;
-@property (nonatomic, copy) NSString *sunshineUsername;
-@property (nonatomic, copy) NSString *sunshinePassword;
+@property (nonatomic, copy) NSString *clusterURL;
+@property (nonatomic, copy) NSString *bodyNodeID;
+@property (nonatomic, copy) NSString *headToken;
 @property (nonatomic, copy) HydraPairCompletion completion;
 @end
 
 @implementation HydraPairSession
 
 - (instancetype)initWithHost:(NSString *)host
-           sunshineUsername:(NSString *)sunshineUsername
-           sunshinePassword:(NSString *)sunshinePassword {
+                  clusterURL:(NSString *)clusterURL
+                  bodyNodeID:(NSString *)bodyNodeID
+                   headToken:(NSString *)headToken {
     self = [super init];
     if (self) {
         _host = host;
-        _sunshineUsername = sunshineUsername;
-        _sunshinePassword = sunshinePassword;
+        _clusterURL = clusterURL;
+        _bodyNodeID = bodyNodeID;
+        _headToken  = headToken;
     }
     return self;
 }
@@ -61,34 +64,30 @@
 // MARK: - PairCallback
 
 - (void)startPairing:(NSString *)PIN {
-    // Submit the PIN to Sunshine's HTTPS management API with Basic Auth.
+    // Submit the PIN via HydraCluster's sunshine-pin proxy endpoint.
+    // Sunshine's web UI (port 47990) is localhost-only, so iOS clients cannot
+    // reach it directly. HydraCluster execs the submission on the body machine
+    // where localhost:47990 is always reachable.
     // This runs on PairManager's background thread — use a semaphore to block
     // until the submission completes so PairManager can continue the handshake.
-    NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"https://%@:47990/api/pin", self.host]];
+    NSString *urlStr = [NSString stringWithFormat:@"%@/api/v1/nodes/%@/sunshine-pin",
+                        self.clusterURL, self.bodyNodeID];
+    NSURL *url = [NSURL URLWithString:urlStr];
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
     req.HTTPMethod = @"POST";
+    req.timeoutInterval = 20;
     [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
-
-    NSData *credData = [[NSString stringWithFormat:@"%@:%@", self.sunshineUsername, self.sunshinePassword]
-                        dataUsingEncoding:NSUTF8StringEncoding];
-    NSString *credentials = [credData base64EncodedStringWithOptions:0];
-    [req setValue:[NSString stringWithFormat:@"Basic %@", credentials] forHTTPHeaderField:@"Authorization"];
+    [req setValue:[NSString stringWithFormat:@"Bearer %@", self.headToken]
+        forHTTPHeaderField:@"Authorization"];
 
     NSString *body = [NSString stringWithFormat:@"{\"pin\":\"%@\"}", PIN];
     req.HTTPBody = [body dataUsingEncoding:NSUTF8StringEncoding];
 
-    // Bypass Sunshine's self-signed cert for the PIN submission.
-    NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
-    InsecurePinDelegate *delegate = [[InsecurePinDelegate alloc] init];
-    NSURLSession *session = [NSURLSession sessionWithConfiguration:config
-                                                         delegate:delegate
-                                                    delegateQueue:nil];
-
     dispatch_semaphore_t sem = dispatch_semaphore_create(0);
-    [[session dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+    [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         dispatch_semaphore_signal(sem);
     }] resume];
-    dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC));
+    dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 25 * NSEC_PER_SEC));
 }
 
 - (void)pairSuccessful:(NSData *)serverCert {

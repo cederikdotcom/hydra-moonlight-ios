@@ -3,8 +3,9 @@
 //  hydra-moonlight-ios
 //
 //  Wraps PairManager to expose a simple pairing API to HydraHeadiPad Swift code.
-//  Handles the GameStream crypto handshake on port 47989 and submits the PIN
-//  to Sunshine's management API on port 47990 with Basic Auth credentials.
+//  Handles the GameStream crypto handshake on port 47989/47984 and submits the
+//  PIN via HydraCluster's /api/v1/nodes/{bodyID}/sunshine-pin proxy endpoint,
+//  since Sunshine's web UI (port 47990) only accepts localhost connections.
 //
 
 #import <Foundation/Foundation.h>
@@ -16,13 +17,16 @@ typedef void(^HydraPairCompletion)(NSData * _Nullable serverCert, NSError * _Nul
 @interface HydraPairSession : NSObject
 
 /// Pair with the Sunshine server at the given host IP.
-/// sunshineUsername / sunshinePassword are the Sunshine web-UI credentials
-/// used to submit the PIN via Basic Auth to /api/pin on port 47990.
+/// clusterURL   — base URL of HydraCluster (e.g. "https://hydracluster.experiencenet.com")
+/// bodyNodeID   — the body's HydraCluster node ID (e.g. "node-4c2be4b0"), used to
+///                route the PIN through the cluster's sunshine-pin proxy endpoint.
+/// headToken    — the head's bearer token for authenticating to HydraCluster.
 /// completion is called on the main queue with the DER server cert on success,
 /// or nil + error on failure. alreadyPaired resolves as success with nil cert.
 - (instancetype)initWithHost:(NSString *)host
-           sunshineUsername:(NSString *)sunshineUsername
-           sunshinePassword:(NSString *)sunshinePassword;
+                  clusterURL:(NSString *)clusterURL
+                  bodyNodeID:(NSString *)bodyNodeID
+                   headToken:(NSString *)headToken;
 
 - (void)pairWithCompletion:(HydraPairCompletion)completion;
 
