@@ -16,6 +16,7 @@
 @interface HydraStreamSession ()
 @property (nonatomic, strong) StreamFrameViewController *streamVC;
 @property (nonatomic, weak)   UIViewController *presenter;
+@property (nonatomic, weak)   UIButton *exitButton;
 @end
 
 @implementation HydraStreamSession
@@ -73,11 +74,52 @@
 
     dispatch_async(dispatch_get_main_queue(), ^{
         [presenter presentViewController:vc animated:NO completion:^{
+            [self addExitMenuToVC:vc];
             if ([self.delegate respondsToSelector:@selector(streamSessionDidConnect)]) {
                 [self.delegate streamSessionDidConnect];
             }
         }];
     });
+}
+
+- (void)addExitMenuToVC:(UIViewController *)vc {
+    UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
+    UIImage *icon = [UIImage systemImageNamed:@"ellipsis.circle.fill"];
+    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:30 weight:UIImageSymbolWeightMedium];
+    [btn setImage:[icon imageByApplyingSymbolConfiguration:config] forState:UIControlStateNormal];
+    btn.tintColor = [UIColor whiteColor];
+    btn.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.35];
+    btn.layer.cornerRadius = 22;
+    btn.clipsToBounds = YES;
+    btn.translatesAutoresizingMaskIntoConstraints = NO;
+    [vc.view addSubview:btn];
+    [vc.view bringSubviewToFront:btn];
+    [NSLayoutConstraint activateConstraints:@[
+        [btn.centerXAnchor constraintEqualToAnchor:vc.view.centerXAnchor],
+        [btn.topAnchor constraintEqualToAnchor:vc.view.safeAreaLayoutGuide.topAnchor constant:16],
+        [btn.widthAnchor constraintEqualToConstant:44],
+        [btn.heightAnchor constraintEqualToConstant:44],
+    ]];
+    __weak HydraStreamSession *weakSelf = self;
+    __weak UIButton *weakBtn = btn;
+    [btn addTarget:weakSelf action:@selector(exitMenuTapped) forControlEvents:UIControlEventTouchUpInside];
+    self.exitButton = btn;
+}
+
+- (void)exitMenuTapped {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:nil
+                                                                   message:nil
+                                                            preferredStyle:UIAlertControllerStyleActionSheet];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Exit experience"
+                                              style:UIAlertActionStyleDestructive
+                                            handler:^(UIAlertAction *a) { [self stop]; }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                              style:UIAlertActionStyleCancel
+                                            handler:nil]];
+    // iPad requires a source for the action sheet popover
+    alert.popoverPresentationController.sourceView = self.exitButton;
+    alert.popoverPresentationController.sourceRect = self.exitButton.bounds;
+    [self.streamVC presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)stop {
