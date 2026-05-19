@@ -373,7 +373,9 @@
             return;
         }
         
-        if (!CFEqual(actualCertData, (__bridge CFDataRef)_serverCert)) {
+        // If no pinned cert, accept any Sunshine self-signed cert (pairing returned empty cert).
+        if (_serverCert != nil && _serverCert.length > 0 &&
+            !CFEqual(actualCertData, (__bridge CFDataRef)_serverCert)) {
             Log(LOG_E, @"Server certificate mismatch");
             CFRelease(actualCertData);
             completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, NULL);
