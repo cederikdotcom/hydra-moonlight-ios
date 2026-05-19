@@ -42,9 +42,12 @@
     NSData *clientCert = [CryptoManager readCertFromFile];
 
     // GameStream HTTP pairing runs on port 47989.
+    // httpsPort:0 lets HttpManager auto-discover the HTTPS port (47984) from
+    // the HTTP /serverinfo response. Passing 47990 (Sunshine's web UI port)
+    // was wrong — PairManager couldn't get the server cert and never sent /pair.
     NSString *hostPortString = [NSString stringWithFormat:@"%@:47989", self.host];
     HttpManager *httpManager = [[HttpManager alloc] initWithAddress:hostPortString
-                                                          httpsPort:47990
+                                                          httpsPort:0
                                                          serverCert:nil];
 
     PairManager *pairManager = [[PairManager alloc] initWithManager:httpManager
