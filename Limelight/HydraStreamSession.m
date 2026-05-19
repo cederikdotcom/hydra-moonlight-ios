@@ -32,7 +32,7 @@
 
     StreamConfiguration *config = [[StreamConfiguration alloc] init];
     config.host       = host;
-    config.httpsPort  = 47989;
+    config.httpsPort  = 47984; // Sunshine HTTPS GameStream port; 47989 is HTTP-only
     config.appName    = appName;
     config.appID      = @"0"; // resolved server-side by Sunshine via app name
     config.width      = width;
