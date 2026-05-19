@@ -8,6 +8,10 @@
 #import "HttpManager.h"
 #import "CryptoManager.h"
 
+// Forward declaration so InsecurePinDelegate can be used inside -startPairing:
+@interface InsecurePinDelegate : NSObject <NSURLSessionDelegate>
+@end
+
 @interface HydraPairSession () <PairCallback>
 @property (nonatomic, copy) NSString *host;
 @property (nonatomic, copy) NSString *sunshineUsername;
@@ -62,8 +66,9 @@
     req.HTTPMethod = @"POST";
     [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
 
-    NSString *credentials = [[NSString stringWithFormat:@"%@:%@", self.sunshineUsername, self.sunshinePassword]
-                              dataUsingEncoding:NSUTF8StringEncoding].base64EncodedString;
+    NSData *credData = [[NSString stringWithFormat:@"%@:%@", self.sunshineUsername, self.sunshinePassword]
+                        dataUsingEncoding:NSUTF8StringEncoding];
+    NSString *credentials = [credData base64EncodedStringWithOptions:0];
     [req setValue:[NSString stringWithFormat:@"Basic %@", credentials] forHTTPHeaderField:@"Authorization"];
 
     NSString *body = [NSString stringWithFormat:@"{\"pin\":\"%@\"}", PIN];
@@ -111,9 +116,6 @@
 @end
 
 // Accepts Sunshine's self-signed certificate for the PIN submission request.
-@interface InsecurePinDelegate : NSObject <NSURLSessionDelegate>
-@end
-
 @implementation InsecurePinDelegate
 - (void)URLSession:(NSURLSession *)session
 didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
