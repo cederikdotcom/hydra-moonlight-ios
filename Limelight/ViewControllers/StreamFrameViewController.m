@@ -114,7 +114,8 @@
     _controllerSupport = [[ControllerSupport alloc] initWithConfig:self.streamConfig delegate:self];
     _inactivityTimer = nil;
     
-    _streamView = [[StreamView alloc] initWithFrame:self.view.frame];
+    _streamView = [[StreamView alloc] initWithFrame:self.view.bounds];
+    _streamView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     [_streamView setupStreamView:_controllerSupport interactionDelegate:self config:self.streamConfig];
     
 #if TARGET_OS_TV
@@ -197,7 +198,8 @@
     
     // Only enable scroll and zoom in absolute touch mode
     if (_settings.absoluteTouchMode) {
-        _scrollView = [[UIScrollView alloc] initWithFrame:self.view.frame];
+        _scrollView = [[UIScrollView alloc] initWithFrame:self.view.bounds];
+        _scrollView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
 #if !TARGET_OS_TV
         [_scrollView.panGestureRecognizer setMinimumNumberOfTouches:2];
 #endif
