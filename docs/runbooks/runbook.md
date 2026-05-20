@@ -44,6 +44,7 @@ All subsequent log calls from any session — including during failed sessions w
 - `StreamManager: launch/resume OK — dispatching LiStartConnection` — HTTPS phase complete
 - `Connection: acquiring initLock` — Connection.main() started on opQueue thread
 - `Connection: calling LiStartConnection` — moonlight-common-c protocol begins
+- `[C] Starting audio stream...` / `[C] ...failed: -1` — C-level Limelog entries from moonlight-common-c (AudioStream.c, etc.) — visible in-app since v0.2.89
 - `Stage starting: <name>` — each moonlight stage logs this with block state (SET/NIL)
 - `connectionStarted` — all stages complete, video should appear
 
@@ -140,7 +141,7 @@ If logs stop mid-sequence, the gap between the last entry and the next one (or t
 - If Sunshine still keeps streaming after exit: confirm the cancel request reaches port 47984 (`curl -k "https://<host>:47984/cancel?uniqueid=0123456789ABCDEF"` from iPad's network should return an XML response with `<cancel>1</cancel>`).
 
 **LiStartConnection returns -1 immediately — no stage callbacks fire, no error displayed**
-- Symptom: log shows `Connection: calling LiStartConnection` then immediately `LiStartConnection returned -1`, with no `ClStageStarting` entry. The in-app log gives no reason because moonlight-common-c's `Limelog` writes to stderr, not the HydraLog callback.
+- Symptom: log shows `Connection: calling LiStartConnection` then immediately `LiStartConnection returned -1`, with no `ClStageStarting` entry. Since v0.2.89 `ClLogMessage` routes to `HydraLog`, so `[C]`-prefixed Limelog entries appear in the in-app viewer — check for any `[C]` entry that explains the validation failure.
 - There are two checks in `LiStartConnection` that fire silently before any stage:
 
   **(1) `serverCodecModeSupport == 0`** — fixed in v0.2.87. `HydraStreamSession` bypasses the upstream host-discovery state machine which normally caches this value from `/serverinfo`. `StreamManager.main()` now reads `ServerCodecModeSupport` from the live serverinfo XML and sets `_config.serverCodecModeSupport`; if the tag is absent (some Sunshine versions omit it), falls back to `0x1` (H.264). Look for `StreamManager: serverCodecModeSupport=N` in the log — N must be non-zero.
@@ -152,8 +153,9 @@ If logs stop mid-sequence, the gap between the last entry and the next one (or t
 **Exit triggers immediate stream restart — ⋯ button stops responding**
 - Cause: SwiftUI `onAppear` race during UIKit modal dismiss. When `StreamFrameViewController` is dismissed, `UIHostingController` briefly becomes visible → SwiftUI re-fires `onAppear` on `StreamingView` while `appState.state` is still `.streaming` → `StreamSessionBridge.start()` runs a second time → bridge's `session` pointer replaced → first `HydraStreamSession` loses strong reference from bridge → `streamSessionDidStop` fires quickly (from first session's dismiss completion block) → bridge transitions to `.selfService` → bridge deallocs → `delegate` on first session = `nil`.
 - Consequence: callbacks from the still-running `StreamManager` (stage, launchFailed, connectionStarted) fire into `nil` delegate — nothing is logged, the error is invisible.
-- Fixed: `StreamSessionBridge.stop()` no longer sets `isModalPresented = false` — that flag is only cleared by `streamSessionDidStop`/`streamSessionDidFailWithError` (inside the UIKit dismiss completion). `start()` now has a `guard !isModalPresented` check that returns early if the modal is already presented, blocking the race.
-- If exit-restart recurs: check whether `stop()` was changed to set `isModalPresented = false` again, or whether a new code path creates a `HydraStreamSession` without the guard.
+- Fixed (initial): `StreamSessionBridge.stop()` no longer sets `isModalPresented = false` — that flag is only cleared by `streamSessionDidStop`/`streamSessionDidFailWithError` (inside the UIKit dismiss completion). `start()` now has a `guard !isModalPresented` check that returns early if the modal is already presented, blocking the race.
+- Fixed (v0.2.89 — threading): `ClStageFailed` fires on a moonlight-common-c background thread. `streamSessionDidFailWithError` was setting `isModalPresented = false` synchronously on that bg thread before dispatching `onError` to main. During the UIKit modal dismiss animation, SwiftUI re-rendered and `onAppear` fired on the main thread — `isModalPresented` was already `false` but `AppState.state` was still `.streaming`, so `start()` passed the guard and launched a second session. Fix: `isModalPresented = false` now runs inside `DispatchQueue.main.async` after `onError`, ensuring `AppState.state` is `.error` before the guard can be re-evaluated.
+- If exit-restart recurs: check whether `isModalPresented = false` has been moved back before the `DispatchQueue.main.async` block in either `streamSessionDidStop` or `streamSessionDidFailWithError`.
 
 ## Updating from upstream
 
