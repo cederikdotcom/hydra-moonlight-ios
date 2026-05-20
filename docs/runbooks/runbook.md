@@ -102,6 +102,12 @@ Consumed as a git submodule by `cederikdotcom/hydraheadipad` at `Vendors/hydra-m
 - This is expected after `resetEnrollment` (re-enroll gesture: 3-second long-press on the experience grid) or after deleting and reinstalling the app.
 - If pairing loops (alreadyPaired → unpair → alreadyPaired again), check whether `CryptoManager` is generating a new key pair — it should only generate once; `readCertFromFile` must return non-nil on subsequent launches.
 
+**Exit triggers immediate stream restart — ⋯ button stops responding**
+- Cause: SwiftUI `onAppear` race during UIKit modal dismiss. When `StreamFrameViewController` is dismissed, `UIHostingController` briefly becomes visible → SwiftUI re-fires `onAppear` on `StreamingView` while `appState.state` is still `.streaming` → `StreamSessionBridge.start()` runs a second time → bridge's `session` pointer replaced → first `HydraStreamSession` loses strong reference from bridge → `streamSessionDidStop` fires quickly (from first session's dismiss completion block) → bridge transitions to `.selfService` → bridge deallocs → `delegate` on first session = `nil`.
+- Consequence: callbacks from the still-running `StreamManager` (stage, launchFailed, connectionStarted) fire into `nil` delegate — nothing is logged, the error is invisible.
+- Fixed: `StreamSessionBridge.stop()` no longer sets `isModalPresented = false` — that flag is only cleared by `streamSessionDidStop`/`streamSessionDidFailWithError` (inside the UIKit dismiss completion). `start()` now has a `guard !isModalPresented` check that returns early if the modal is already presented, blocking the race.
+- If exit-restart recurs: check whether `stop()` was changed to set `isModalPresented = false` again, or whether a new code path creates a `HydraStreamSession` without the guard.
+
 ## Updating from upstream
 
 ```sh
