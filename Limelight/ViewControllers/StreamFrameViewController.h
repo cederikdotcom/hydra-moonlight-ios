@@ -33,5 +33,9 @@
 @property (nonatomic, copy) void(^hydraApplicationResignActiveCallback)(void);
 
 -(void)updatePreferredDisplayMode:(BOOL)streamActive;
+// Stops the underlying StreamManager/Connection immediately.
+// Called by HydraStreamSession.stop() before dismissing the VC so that
+// LiStartConnection() returns and ArCleanup closes the SDL audio device.
+-(void)hydraStop;
 
 @end

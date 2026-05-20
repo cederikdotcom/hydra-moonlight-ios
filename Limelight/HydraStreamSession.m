@@ -234,6 +234,10 @@ void HydraLog(NSString *format, ...) {
 
 - (void)stop {
     HydraLog(@"HydraStreamSession: stop() called — sending /cancel + dismissing VC");
+    // Stop the StreamManager/Connection before dismissing so LiStartConnection()
+    // returns and ArCleanup closes the SDL audio device. Without this the audio
+    // stream keeps playing in the background until Sunshine times out.
+    [self.streamVC hydraStop];
     [self sendCancelToSunshine];
     dispatch_async(dispatch_get_main_queue(), ^{
         if (self.streamVC && self.streamVC.presentingViewController) {

@@ -770,4 +770,8 @@
 }
 #endif
 
+- (void)hydraStop {
+    [_streamMan stopStream];
+}
+
 @end
