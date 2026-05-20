@@ -163,6 +163,12 @@ If logs stop mid-sequence, the gap between the last entry and the next one (or t
 - Reading the log: check the `ArInit:` entry for `channels=N` and the SDL error line immediately after. channels=2 + `SDL_Init(audio) failed: Application didn't initialize properly` → root cause A (update to v0.2.92). channels > 2 + open failure → root cause B (Sunshine surround config issue, stereo fallback should recover).
 - If `SDL_OpenAudioDevice` fails with channels=2 (root cause C — unexpected): the `ArInit: SDL_OpenAudioDevice failed (channels=2 freq=N): <SDL error>` line gives the SDL reason. Check iOS AVAudioSession state.
 
+**Portrait stream renders landscape on body — Sunshine keeps VDD at 1920x1080**
+- Symptom: iPad requests portrait resolution (1080x1920) but the body displays the stream in landscape (1920x1080). Sunshine log contains "Optimize game settings is not set in the client! Resolution will not be changed."
+- Cause: `config.optimizeGameSettings = NO` in `HydraStreamSession`. Sunshine's `dd_resolution_option=auto` only switches the virtual display driver to match the client-requested resolution when the Moonlight client sends the `optimizeGameSettings=true` flag. With it disabled, Sunshine ignores the resolution hint and keeps the display at its current setting.
+- Fixed (310f5da): `config.optimizeGameSettings = YES`. Safe for landscape streams too — Sunshine will set the VDD to 1920x1080 which is already the default, so no visible change for landscape experiences.
+- If the symptom recurs: confirm `config.optimizeGameSettings = YES` is set in `HydraStreamSession.m` and that the body's Sunshine config has `dd_resolution_option=auto` (not `disabled`).
+
 **Exit triggers immediate stream restart — ⋯ button stops responding**
 - Cause: SwiftUI `onAppear` race during UIKit modal dismiss. When `StreamFrameViewController` is dismissed, `UIHostingController` briefly becomes visible → SwiftUI re-fires `onAppear` on `StreamingView` while `appState.state` is still `.streaming` → `StreamSessionBridge.start()` runs a second time → bridge's `session` pointer replaced → first `HydraStreamSession` loses strong reference from bridge → `streamSessionDidStop` fires quickly (from first session's dismiss completion block) → bridge transitions to `.selfService` → bridge deallocs → `delegate` on first session = `nil`.
 - Consequence: callbacks from the still-running `StreamManager` (stage, launchFailed, connectionStarted) fire into `nil` delegate — nothing is logged, the error is invisible.
