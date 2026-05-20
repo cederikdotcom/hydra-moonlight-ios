@@ -85,7 +85,7 @@ void HydraLog(NSString *format, ...) {
 
     config.audioConfiguration = AUDIO_CONFIGURATION_STEREO;
     config.useFramePacing     = YES;
-    config.optimizeGameSettings = NO;
+    config.optimizeGameSettings = YES;
     config.playAudioOnPC      = NO;
     config.multiController    = NO;
 
