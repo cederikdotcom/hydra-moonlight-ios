@@ -22,6 +22,8 @@ Consumed as a git submodule by `cederikdotcom/hydraheadipad` at `Vendors/hydra-m
 
 `HydraLog.h` declares a `HydraLog(format, ...)` C function that logs to both `NSLog` (device console / Xcode Organizer) and, if a Swift callback is registered, to the in-app log viewer (⋯ → Logs).
 
+**Reading logs while the stream is stuck:** tap the ⋯ button while on the "Starting \<app\>..." screen → "View logs" opens a log sheet over the stream, showing live `[ObjC]` entries as they arrive. Use this instead of waiting for an error and then tapping ⋯ → Create issue — it gives real-time visibility into which HTTPS phase or moonlight stage is blocking.
+
 The callback is registered once at app launch in `HydraHeadiPadApp.init()`:
 ```swift
 HydraStreamSession.setGlobalLogCallback { message in
