@@ -16,6 +16,35 @@ Consumed as a git submodule by `cederikdotcom/hydraheadipad` at `Vendors/hydra-m
 | `Limelight/HydraStreamSession.h/.m` | Public streaming API |
 | `Limelight/HydraPairSession.h/.m` | Pairing API — GameStream handshake + Sunshine PIN |
 | `Limelight/HydraOpus.h/.m` | Opus audio encode helper |
+| `Limelight/HydraLog.h` | Global ObjC→AppLogger logging bridge |
+
+## Diagnostic logging infrastructure
+
+`HydraLog.h` declares a `HydraLog(format, ...)` C function that logs to both `NSLog` (device console / Xcode Organizer) and, if a Swift callback is registered, to the in-app log viewer (⋯ → Logs).
+
+The callback is registered once at app launch in `HydraHeadiPadApp.init()`:
+```swift
+HydraStreamSession.setGlobalLogCallback { message in
+    AppLogger.shared.log("[ObjC] \(message ?? "")")
+}
+```
+
+All subsequent log calls from any session — including during failed sessions where the per-session delegate chain is broken — flow through this global callback. The `[ObjC]` prefix distinguishes these entries in the log viewer.
+
+**What to look for in a hanging stream:**
+- `StreamManager: main START` — confirms StreamManager started on a background thread
+- `StreamManager: crypto ready` — key pair exists (generated on first pair), HTTPS requests about to start
+- `StreamManager: serverinfo done` — first HTTPS completed; state and pairStatus visible
+- `StreamManager: applist done` — second HTTPS completed; resolved appID visible
+- `StreamManager: /launch HTTPS request starting` — third HTTPS sent (60 s inactivity timeout)
+- `StreamManager: /launch response` — Sunshine responded; statusCode + gameSession visible
+- `StreamManager: launch/resume OK — dispatching LiStartConnection` — HTTPS phase complete
+- `Connection: acquiring initLock` — Connection.main() started on opQueue thread
+- `Connection: calling LiStartConnection` — moonlight-common-c protocol begins
+- `Stage starting: <name>` — each moonlight stage logs this with block state (SET/NIL)
+- `connectionStarted` — all stages complete, video should appear
+
+If logs stop mid-sequence, the gap between the last entry and the next one (or the absence of a next entry) identifies the exact hang point.
 
 ## Ports used
 
