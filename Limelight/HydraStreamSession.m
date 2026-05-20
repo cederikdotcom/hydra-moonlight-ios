@@ -178,6 +178,12 @@ void HydraLog(NSString *format, ...) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:nil
                                                                    message:nil
                                                             preferredStyle:UIAlertControllerStyleActionSheet];
+    if (self.viewLogsCallback) {
+        void (^cb)(void) = self.viewLogsCallback;
+        [alert addAction:[UIAlertAction actionWithTitle:@"View logs"
+                                                  style:UIAlertActionStyleDefault
+                                                handler:^(UIAlertAction *a) { cb(); }]];
+    }
     [alert addAction:[UIAlertAction actionWithTitle:@"Exit experience"
                                               style:UIAlertActionStyleDestructive
                                             handler:^(UIAlertAction *a) { [self stop]; }]];

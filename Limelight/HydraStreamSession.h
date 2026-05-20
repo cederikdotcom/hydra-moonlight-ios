@@ -24,6 +24,10 @@
 
 @property (nonatomic, weak) id<HydraStreamSessionDelegate> delegate;
 
+// Called when the user taps "View logs" in the in-stream ⋯ menu.
+// Set this before calling startWithHost:. The block is called on the main thread.
+@property (nonatomic, copy) void (^viewLogsCallback)(void);
+
 // Register the global ObjC→AppLogger callback. Call once at app launch.
 // Logs from ALL sessions flow through this regardless of per-session delegate state.
 + (void)setGlobalLogCallback:(void (^)(NSString *message))callback;
