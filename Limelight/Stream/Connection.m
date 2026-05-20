@@ -259,11 +259,15 @@ int ArInit(int audioConfiguration, POPUS_MULTISTREAM_CONFIGURATION opusConfig, v
     SDL_PauseAudioDevice(audioDevice, 0);
     
     // Use PlayAndRecord so microphone relay (hydravoie) can capture while stream plays.
-    // DefaultToSpeaker routes output to the main speaker instead of the ear receiver.
     // MixWithOthers suppresses the DuckOthers flag SDL sets by default.
+    // overrideOutputAudioPort routes to the built-in speaker when no external audio
+    // device is connected, but defers to the external device when one is present.
+    // DefaultToSpeaker must NOT be used here — it forces the built-in speaker even
+    // when an external USB or headphone device is connected, silencing it.
     [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayAndRecord
-                                     withOptions:AVAudioSessionCategoryOptionDefaultToSpeaker | AVAudioSessionCategoryOptionMixWithOthers
+                                     withOptions:AVAudioSessionCategoryOptionMixWithOthers
                                            error:nil];
+    [[AVAudioSession sharedInstance] overrideOutputAudioPort:AVAudioSessionPortOverrideSpeaker error:nil];
     
     return 0;
 }
