@@ -28,9 +28,13 @@ Consumed as a git submodule by `cederikdotcom/hydraheadipad` at `Vendors/hydra-m
 The callback is registered once at app launch in `HydraHeadiPadApp.init()`:
 ```swift
 HydraStreamSession.setGlobalLogCallback { message in
-    AppLogger.shared.log("[ObjC] \(message ?? "")")
+    let msg = message ?? ""
+    DispatchQueue.main.async {
+        AppLogger.shared.log("[ObjC] \(msg)")
+    }
 }
 ```
+The `DispatchQueue.main.async` wrapper is required because `HydraLog` fires on stream/decode background threads, and `AppLogger.log()` is `@MainActor`-isolated.
 
 All subsequent log calls from any session — including during failed sessions where the per-session delegate chain is broken — flow through this global callback. The `[ObjC]` prefix distinguishes these entries in the log viewer.
 
@@ -185,6 +189,13 @@ If logs stop mid-sequence, the gap between the last entry and the next one (or t
 - Cause: `config.optimizeGameSettings = NO` in `HydraStreamSession`. Sunshine's `dd_resolution_option=auto` only switches the virtual display driver to match the client-requested resolution when the Moonlight client sends the `optimizeGameSettings=true` flag. With it disabled, Sunshine ignores the resolution hint and keeps the display at its current setting.
 - Fixed (310f5da): `config.optimizeGameSettings = YES`. Safe for landscape streams too — Sunshine will set the VDD to 1920x1080 which is already the default, so no visible change for landscape experiences.
 - If the symptom recurs: confirm `config.optimizeGameSettings = YES` is set in `HydraStreamSession.m` and that the body's Sunshine config has `dd_resolution_option=auto` (not `disabled`).
+
+**App crashes silently on "Exit experience" — no log entries, crash specific to one experience**
+- Symptom: tapping "Exit experience" in the in-stream ⋯ menu crashes the app instantly with nothing in AppLogger (no `[ObjC]` entry, no Swift entry for the stop). Crash may be reproducible on a specific experience (e.g. one with the Microphone action in the action sheet).
+- Cause: UIKit fires the `UIAlertAction` handler while the action sheet's dismiss animation is still in progress. `stop()` then dispatched `[streamVC dismissViewControllerAnimated:NO]`. UIKit tries to chain-dismiss `streamVC.presentedViewController` (the action sheet) — but a dismiss animation for that VC is already running. The double-dismiss triggers an internal `UIViewControllerHierarchyInconsistency` assertion that crashes with no AppLogger output (it fires below the Swift/ObjC log layer).
+- Fixed (bbcee44): `stop()` now reads `self.streamVC.presentingViewController` and calls dismiss on that instead of on `streamVC`. The root VC dismissing from above bypasses the action sheet's in-progress state entirely.
+- If the crash recurs: confirm `stop()` calls `[self.streamVC.presentingViewController dismissViewControllerAnimated:NO ...]`, NOT `[self.streamVC dismissViewControllerAnimated:NO ...]`. The `presentingViewController` path is safe even when the action sheet is mid-dismiss because the root VC is never the one in transition.
+- How to get the crash report: Xcode Organizer → Crashes, or Settings → Privacy → Analytics & Improvements → Analytics Data on the device. The exception type will be `NSInternalInconsistencyException` or `UIViewControllerHierarchyInconsistency`.
 
 **Exit triggers immediate stream restart — ⋯ button stops responding**
 - Cause: SwiftUI `onAppear` race during UIKit modal dismiss. When `StreamFrameViewController` is dismissed, `UIHostingController` briefly becomes visible → SwiftUI re-fires `onAppear` on `StreamingView` while `appState.state` is still `.streaming` → `StreamSessionBridge.start()` runs a second time → bridge's `session` pointer replaced → first `HydraStreamSession` loses strong reference from bridge → `streamSessionDidStop` fires quickly (from first session's dismiss completion block) → bridge transitions to `.selfService` → bridge deallocs → `delegate` on first session = `nil`.
