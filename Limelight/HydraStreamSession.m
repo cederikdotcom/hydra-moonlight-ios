@@ -192,6 +192,12 @@ void HydraLog(NSString *format, ...) {
                                                   style:UIAlertActionStyleDefault
                                                 handler:^(UIAlertAction *a) { cb(); }]];
     }
+    if (self.viewDiagnosticsCallback) {
+        void (^cb)(void) = self.viewDiagnosticsCallback;
+        [alert addAction:[UIAlertAction actionWithTitle:@"Stream diagnostics"
+                                                  style:UIAlertActionStyleDefault
+                                                handler:^(UIAlertAction *a) { cb(); }]];
+    }
     [alert addAction:[UIAlertAction actionWithTitle:@"Exit experience"
                                               style:UIAlertActionStyleDestructive
                                             handler:^(UIAlertAction *a) { [self stop]; }]];
@@ -236,6 +242,10 @@ void HydraLog(NSString *format, ...) {
     } else {
         completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, nil);
     }
+}
+
+- (NSDictionary *)streamStatsSnapshot {
+    return [self.streamVC streamStatsSnapshot];
 }
 
 - (void)stop {

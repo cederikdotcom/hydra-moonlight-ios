@@ -32,6 +32,10 @@
 // Only added to the menu when this block is non-nil.
 @property (nonatomic, copy) void (^viewMicrophoneCallback)(void);
 
+// Called when the user taps "Stream diagnostics" in the in-stream ⋯ menu.
+// Only added to the menu when this block is non-nil.
+@property (nonatomic, copy) void (^viewDiagnosticsCallback)(void);
+
 // Register the global ObjC→AppLogger callback. Call once at app launch.
 // Logs from ALL sessions flow through this regardless of per-session delegate state.
 + (void)setGlobalLogCallback:(void (^)(NSString *message))callback;
@@ -50,6 +54,10 @@
           bitrateKbps:(int)bitrateKbps
            serverCert:(NSData *)serverCert
             presenter:(UIViewController *)presenter;
+
+// Returns a snapshot of current stream metrics (RTT, FPS, host latency, audio queue).
+// Safe to call on the main thread at any frequency. Returns nil when stream is inactive.
+- (nullable NSDictionary *)streamStatsSnapshot;
 
 // Disconnect and dismiss the stream view.
 - (void)stop;

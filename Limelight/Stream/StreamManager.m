@@ -236,4 +236,47 @@
             hostProcessingString];
 }
 
+- (NSDictionary *) streamStatsSnapshot {
+    if (!_connection) {
+        return nil;
+    }
+
+    video_stats_t stats;
+    if (![_connection getVideoStats:&stats]) {
+        return nil;
+    }
+
+    NSMutableDictionary *snapshot = [NSMutableDictionary dictionary];
+
+    uint32_t rtt, variance;
+    if (LiGetEstimatedRttInfo(&rtt, &variance)) {
+        snapshot[@"rttMs"] = @(rtt);
+        snapshot[@"rttVarianceMs"] = @(variance);
+    }
+
+    float interval = stats.endTime - stats.startTime;
+    if (interval > 0) {
+        snapshot[@"fps"] = @(stats.totalFrames / interval);
+        snapshot[@"networkDropPercent"] = @(stats.networkDroppedFrames / interval * 100.0f);
+    }
+
+    if (stats.framesWithHostProcessingLatency > 0) {
+        snapshot[@"hostLatencyMinMs"] = @(stats.minHostProcessingLatency / 10.f);
+        snapshot[@"hostLatencyMaxMs"] = @(stats.maxHostProcessingLatency / 10.f);
+        snapshot[@"hostLatencyAvgMs"] = @((float)stats.totalHostProcessingLatency / stats.framesWithHostProcessingLatency / 10.f);
+    }
+
+    NSString *codec = [_connection getActiveCodecName];
+    if (codec) {
+        snapshot[@"codec"] = codec;
+    }
+    snapshot[@"width"]  = @(_config.width);
+    snapshot[@"height"] = @(_config.height);
+
+    snapshot[@"pendingAudioFrames"]     = @(LiGetPendingAudioFrames());
+    snapshot[@"pendingAudioDurationMs"] = @(LiGetPendingAudioDuration());
+
+    return [snapshot copy];
+}
+
 @end

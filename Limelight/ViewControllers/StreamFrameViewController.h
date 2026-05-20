@@ -33,6 +33,9 @@
 @property (nonatomic, copy) void(^hydraApplicationResignActiveCallback)(void);
 
 -(void)updatePreferredDisplayMode:(BOOL)streamActive;
+// Returns a live snapshot of stream metrics (RTT, FPS, host latency, audio queue).
+// Returns nil when the stream is not yet active.
+-(nullable NSDictionary *)streamStatsSnapshot;
 // Stops the underlying StreamManager/Connection immediately.
 // Called by HydraStreamSession.stop() before dismissing the VC so that
 // LiStartConnection() returns and ArCleanup closes the SDL audio device.

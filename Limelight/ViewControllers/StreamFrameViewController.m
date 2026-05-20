@@ -776,4 +776,8 @@
     [_streamMan stopStream];
 }
 
+- (NSDictionary *)streamStatsSnapshot {
+    return [_streamMan streamStatsSnapshot];
+}
+
 @end
