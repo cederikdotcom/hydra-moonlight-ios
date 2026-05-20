@@ -188,16 +188,27 @@ int DrSubmitDecodeUnit(PDECODE_UNIT decodeUnit)
                              decodeUnit:decodeUnit];
 }
 
+// iOS audio hardware only supports stereo output. If Sunshine negotiates a
+// surround-sound Opus config, SDL_OpenAudioDevice will fail on iOS because
+// it cannot open a 6- or 8-channel output device. Fall back to stereo so
+// the stream succeeds with downmixed audio rather than failing entirely.
+#define IOS_MAX_AUDIO_CHANNELS 2
+
 int ArInit(int audioConfiguration, POPUS_MULTISTREAM_CONFIGURATION opusConfig, void* context, int flags)
 {
+    HydraLog(@"ArInit: sampleRate=%d channels=%d streams=%d coupledStreams=%d samplesPerFrame=%d",
+             opusConfig->sampleRate, opusConfig->channelCount,
+             opusConfig->streams, opusConfig->coupledStreams,
+             opusConfig->samplesPerFrame);
+
     int err;
     SDL_AudioSpec want, have;
-    
+
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0) {
-        Log(LOG_E, @"Failed to initialize audio subsystem: %s\n", SDL_GetError());
+        HydraLog(@"ArInit: SDL_InitSubSystem failed: %s", SDL_GetError());
         return -1;
     }
-        
+
     SDL_zero(want);
     want.freq = opusConfig->sampleRate;
     want.format = AUDIO_S16;
@@ -205,8 +216,15 @@ int ArInit(int audioConfiguration, POPUS_MULTISTREAM_CONFIGURATION opusConfig, v
     want.samples = opusConfig->samplesPerFrame;
 
     audioDevice = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
+    if (audioDevice == 0 && want.channels > IOS_MAX_AUDIO_CHANNELS) {
+        HydraLog(@"ArInit: SDL_OpenAudioDevice failed with %d channels — retrying with %d (stereo fallback)",
+                 want.channels, IOS_MAX_AUDIO_CHANNELS);
+        want.channels = IOS_MAX_AUDIO_CHANNELS;
+        audioDevice = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
+    }
     if (audioDevice == 0) {
-        Log(LOG_E, @"Failed to open audio device: %s\n", SDL_GetError());
+        HydraLog(@"ArInit: SDL_OpenAudioDevice failed (channels=%d freq=%d): %s",
+                 want.channels, want.freq, SDL_GetError());
         ArCleanup();
         return -1;
     }
