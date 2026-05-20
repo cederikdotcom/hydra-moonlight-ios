@@ -38,6 +38,7 @@ All subsequent log calls from any session — including during failed sessions w
 - `StreamManager: crypto ready` — key pair exists (generated on first pair), HTTPS requests about to start
 - `StreamManager: serverinfo done` — first HTTPS completed; state and pairStatus visible
 - `StreamManager: applist done` — second HTTPS completed; resolved appID visible
+- `StreamManager: serverCodecModeSupport=N` — N must be non-zero; 0 causes immediate LiStartConnection -1
 - `StreamManager: /launch HTTPS request starting` — third HTTPS sent (60 s inactivity timeout)
 - `StreamManager: /launch response` — Sunshine responded; statusCode + gameSession visible
 - `StreamManager: launch/resume OK — dispatching LiStartConnection` — HTTPS phase complete
@@ -137,6 +138,16 @@ If logs stop mid-sequence, the gap between the last entry and the next one (or t
 - Cause: when the user exits before `LiStartConnection` runs (stream stuck on "Starting..."), `_connection` is nil so `[_connection terminate]` is a no-op. Sunshine launched the app and is actively streaming, but moonlight-common-c never established the RTSP control channel, so there is no graceful disconnect path through moonlight-common-c.
 - Fixed: `HydraStreamSession.stop()` now fires `GET https://<host>:47984/cancel?uniqueid=0123456789ABCDEF` as a 3-second fire-and-forget before dismissing the VC. Sunshine terminates the app session immediately on receipt. This mirrors what Moonlight-Qt does on process exit.
 - If Sunshine still keeps streaming after exit: confirm the cancel request reaches port 47984 (`curl -k "https://<host>:47984/cancel?uniqueid=0123456789ABCDEF"` from iPad's network should return an XML response with `<cancel>1</cancel>`).
+
+**LiStartConnection returns -1 immediately — no stage callbacks fire, no error displayed**
+- Symptom: log shows `Connection: calling LiStartConnection` then immediately `LiStartConnection returned -1`, with no `ClStageStarting` entry. The in-app log gives no reason because moonlight-common-c's `Limelog` writes to stderr, not the HydraLog callback.
+- There are two checks in `LiStartConnection` that fire silently before any stage:
+
+  **(1) `serverCodecModeSupport == 0`** — fixed in v0.2.87. `HydraStreamSession` bypasses the upstream host-discovery state machine which normally caches this value from `/serverinfo`. `StreamManager.main()` now reads `ServerCodecModeSupport` from the live serverinfo XML and sets `_config.serverCodecModeSupport`; if the tag is absent (some Sunshine versions omit it), falls back to `0x1` (H.264). Look for `StreamManager: serverCodecModeSupport=N` in the log — N must be non-zero.
+
+  **(2) `MAGIC_BYTE_FROM_AUDIO_CONFIG(audioConfiguration) != 0xCA`** — fixed in v0.2.88. `audioConfiguration` must be constructed via `MAKE_AUDIO_CONFIGURATION(channelCount, channelMask)` which embeds `0xCA` as the low byte (magic sentinel). Setting it to a raw integer (e.g. `1`) fails this check. `HydraStreamSession` now uses `AUDIO_CONFIGURATION_STEREO` (= `MAKE_AUDIO_CONFIGURATION(2, 0x3)` = `0x302CA`).
+
+- If the symptom recurs: add temporary `NSLog` or stderr output inside the `if (serverCodecModeSupport == 0)` and `if (MAGIC_BYTE_FROM_AUDIO_CONFIG(...) != 0xCA)` blocks in moonlight-common-c `Connection.c` to identify which check fires.
 
 **Exit triggers immediate stream restart — ⋯ button stops responding**
 - Cause: SwiftUI `onAppear` race during UIKit modal dismiss. When `StreamFrameViewController` is dismissed, `UIHostingController` briefly becomes visible → SwiftUI re-fires `onAppear` on `StreamingView` while `appState.state` is still `.streaming` → `StreamSessionBridge.start()` runs a second time → bridge's `session` pointer replaced → first `HydraStreamSession` loses strong reference from bridge → `streamSessionDidStop` fires quickly (from first session's dismiss completion block) → bridge transitions to `.selfService` → bridge deallocs → `delegate` on first session = `nil`.
