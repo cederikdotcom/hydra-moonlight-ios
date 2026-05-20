@@ -89,6 +89,13 @@
     _config.appVersion = appversion;
     _config.gfeVersion = gfeVersion;
 
+    // serverCodecModeSupport is required by LiStartConnection — it returns -1 immediately if 0.
+    // The upstream UI flow sets this from the cached TemporaryHost after discovery; we must set it
+    // here from the live serverinfo response since we bypass the host discovery state machine.
+    NSString* codecSupportStr = [serverInfoResp getStringTag:@"ServerCodecModeSupport"];
+    _config.serverCodecModeSupport = codecSupportStr ? [codecSupportStr intValue] : 0x1; // 0x1 = SCM_H264 fallback
+    HydraLog(@"StreamManager: serverCodecModeSupport=%d (from serverinfo: %@)", _config.serverCodecModeSupport, codecSupportStr);
+
     if (_config.appName.length > 0) {
         HydraLog(@"StreamManager: making applist HTTPS...");
         AppListResponse *appListResp = [[AppListResponse alloc] init];
