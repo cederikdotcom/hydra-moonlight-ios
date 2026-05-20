@@ -171,11 +171,11 @@ If logs stop mid-sequence, the gap between the last entry and the next one (or t
 - Reading the log: check the `ArInit:` entry for `channels=N` and the SDL error line immediately after. channels=2 + `SDL_Init(audio) failed: Application didn't initialize properly` → root cause A (update to v0.2.92). channels > 2 + open failure → root cause B (Sunshine surround config issue, stereo fallback should recover).
 - If `SDL_OpenAudioDevice` fails with channels=2 (root cause C — unexpected): the `ArInit: SDL_OpenAudioDevice failed (channels=2 freq=N): <SDL error>` line gives the SDL reason. Check iOS AVAudioSession state.
 
-**Stream does not fill iPad screen width — black bars visible on left and right**
-- Symptom: video is centred with black bars on both sides (pillarboxed). Affects portrait streams (1080x1920) on iPads whose aspect ratio is wider than 9:16 (e.g. iPad 10th gen ~3:4).
-- Cause: `VideoDecoderRenderer` and `StreamView` used aspect-fit sizing — the display layer was scaled to fit entirely within the view bounds, leaving bars on whichever axis had spare space.
-- Fixed (d6c2c72): condition inverted from `width > height * ratio` to `width < height * ratio` in `VideoDecoderRenderer.reinitializeDisplayLayer`, `StreamView.layoutSublayers`, `StreamView.getVideoAreaSize`, and the pointer-region helper. The layer now scales to fill the constraining dimension; content that overflows the opposite axis is clipped at the screen edge.
-- If bars reappear: check that all four `>` comparisons in those methods have been changed to `<` — an upstream rebase could revert them.
+**Stream does not fill iPad screen — black bars or cropped UI visible**
+- Symptom: video is pillarboxed (bars on sides) or letterboxed (bars top/bottom), or Mercator/other experience UI elements are cropped at the edges.
+- Root cause: stream resolution does not match the device's screen aspect ratio. Any aspect-scaling (fit or fill) causes either bars or cropping.
+- Fix (v0.2.104 / d2111c9): `VideoDecoderRenderer.reinitializeDisplayLayer` and `StreamView.layoutSubviews` now set `displayLayer.frame = view.bounds` directly — no aspect calculation. `StreamView.getVideoAreaSize` returns `self.bounds.size`. The stream resolution is derived in `ContentView.nativeStreamDimensions` from `UIWindowScene.screen.nativeBounds`, matching the experience orientation, so stream AR = device AR = no scaling required.
+- If bars or cropping reappear: (1) confirm `nativeStreamDimensions` is being called from ContentView and passing device native bounds (not the catalog's fixed 1080×1920); (2) confirm `displayLayer.frame = _view.bounds` in `VideoDecoderRenderer` and `sublayer.frame = self.bounds` in `StreamView.layoutSubviews` — an upstream rebase could revert them to aspect-fit arithmetic.
 
 **Portrait stream renders landscape on body — Sunshine keeps VDD at 1920x1080**
 - Symptom: iPad requests portrait resolution (1080x1920) but the body displays the stream in landscape (1920x1080). Sunshine log contains "Optimize game settings is not set in the client! Resolution will not be changed."
