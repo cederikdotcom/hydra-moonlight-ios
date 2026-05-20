@@ -27,10 +27,12 @@ void HydraLog(NSString *format, ...) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-// VIDEO_FORMAT flags from moonlight-common-c (Moonlight.h)
+// VIDEO_FORMAT and AUDIO_CONFIGURATION flags from moonlight-common-c (Limelight.h)
 #ifndef VIDEO_FORMAT_H264
 #define VIDEO_FORMAT_H264  0x0001
 #define VIDEO_FORMAT_H265  0x0100
+#define MAKE_AUDIO_CONFIGURATION(ch, mask) (((mask) << 16) | ((ch) << 8) | 0xCA)
+#define AUDIO_CONFIGURATION_STEREO MAKE_AUDIO_CONFIGURATION(2, 0x3)
 #endif
 
 @interface HydraStreamSession () <NSURLSessionDelegate>
@@ -81,7 +83,7 @@ void HydraLog(NSString *format, ...) {
     // Re-enable HEVC (VIDEO_FORMAT_H265 | VIDEO_FORMAT_H264) once stream is confirmed.
     config.supportedVideoFormats = VIDEO_FORMAT_H264;
 
-    config.audioConfiguration = 1; // stereo
+    config.audioConfiguration = AUDIO_CONFIGURATION_STEREO;
     config.useFramePacing     = YES;
     config.optimizeGameSettings = NO;
     config.playAudioOnPC      = NO;
