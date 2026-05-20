@@ -204,10 +204,11 @@ int ArInit(int audioConfiguration, POPUS_MULTISTREAM_CONFIGURATION opusConfig, v
     int err;
     SDL_AudioSpec want, have;
 
-    // SDL_InitSubSystem requires SDL core to be running (via SDL_Init). Since
-    // HydraHeadiPad never goes through the Moonlight/SDL UIKit main loop,
-    // SDL core is never initialized. SDL_Init initializes the core first if
-    // needed, then brings up the requested subsystem — safe to call repeatedly.
+    // HydraHeadiPad uses its own Swift/UIKit main and never goes through
+    // SDL_UIKitRunApp. SDL_SetMainReady() marks the app as initialized so
+    // SDL_Init doesn't reject us with "Application didn't initialize properly".
+    // #define SDL_MAIN_HANDLED (line 15) makes this symbol available.
+    SDL_SetMainReady();
     if (SDL_Init(SDL_INIT_AUDIO) < 0) {
         HydraLog(@"ArInit: SDL_Init(audio) failed: %s", SDL_GetError());
         return -1;
