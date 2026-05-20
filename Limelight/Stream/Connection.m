@@ -322,8 +322,12 @@ void ClLogMessage(const char* format, ...)
 {
     va_list va;
     va_start(va, format);
-    vfprintf(stderr, format, va);
+    NSString *msg = [[NSString alloc] initWithFormat:
+        [[NSString alloc] initWithCString:format encoding:NSUTF8StringEncoding]
+        arguments:va];
     va_end(va);
+    HydraLog(@"[C] %@", [msg stringByTrimmingCharactersInSet:
+        [NSCharacterSet newlineCharacterSet]]);
 }
 
 void ClRumble(unsigned short controllerNumber, unsigned short lowFreqMotor, unsigned short highFreqMotor)
