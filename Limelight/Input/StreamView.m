@@ -171,7 +171,7 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     [super layoutSubviews];
     if (streamAspectRatio <= 0) return;
     CGSize videoSize;
-    if (self.bounds.size.width > self.bounds.size.height * streamAspectRatio) {
+    if (self.bounds.size.width < self.bounds.size.height * streamAspectRatio) {
         videoSize = CGSizeMake(self.bounds.size.height * streamAspectRatio, self.bounds.size.height);
     } else {
         videoSize = CGSizeMake(self.bounds.size.width, self.bounds.size.width / streamAspectRatio);
@@ -201,7 +201,7 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
 }
 
 - (CGSize) getVideoAreaSize {
-    if (self.bounds.size.width > self.bounds.size.height * streamAspectRatio) {
+    if (self.bounds.size.width < self.bounds.size.height * streamAspectRatio) {
         return CGSizeMake(self.bounds.size.height * streamAspectRatio, self.bounds.size.height);
     } else {
         return CGSizeMake(self.bounds.size.width, self.bounds.size.width / streamAspectRatio);
@@ -688,10 +688,10 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
         }
     }
     
-    // This logic mimics what iOS does with AVLayerVideoGravityResizeAspect
+    // This logic mimics what iOS does with AVLayerVideoGravityResizeAspectFill
     CGSize videoSize;
     CGPoint videoOrigin;
-    if (self.bounds.size.width > self.bounds.size.height * streamAspectRatio) {
+    if (self.bounds.size.width < self.bounds.size.height * streamAspectRatio) {
         videoSize = CGSizeMake(self.bounds.size.height * streamAspectRatio, self.bounds.size.height);
     } else {
         videoSize = CGSizeMake(self.bounds.size.width, self.bounds.size.width / streamAspectRatio);

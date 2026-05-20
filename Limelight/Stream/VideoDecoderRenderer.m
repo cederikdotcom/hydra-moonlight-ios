@@ -44,13 +44,13 @@ extern int ff_isom_write_av1c(AVIOContext *pb, const uint8_t *buf, int size,
     displayLayer = [[AVSampleBufferDisplayLayer alloc] init];
     displayLayer.backgroundColor = [UIColor blackColor].CGColor;
     
-    // Ensure the AVSampleBufferDisplayLayer is sized to preserve the aspect ratio
-    // of the video stream. We used to use AVLayerVideoGravityResizeAspect, but that
-    // respects the PAR encoded in the SPS which causes our computed video-relative
-    // touch location to be wrong in StreamView if the aspect ratio of the host
-    // desktop doesn't match the aspect ratio of the stream.
+    // Size the display layer to fill the view (aspect fill). The layer is centered
+    // and may extend beyond the view bounds — content outside the screen edge is
+    // naturally clipped. We avoid AVLayerVideoGravityResizeAspectFill because it
+    // respects the PAR encoded in the SPS, which causes touch location mapping to
+    // be wrong in StreamView when the host desktop and stream aspect ratios differ.
     CGSize videoSize;
-    if (_view.bounds.size.width > _view.bounds.size.height * _streamAspectRatio) {
+    if (_view.bounds.size.width < _view.bounds.size.height * _streamAspectRatio) {
         videoSize = CGSizeMake(_view.bounds.size.height * _streamAspectRatio, _view.bounds.size.height);
     } else {
         videoSize = CGSizeMake(_view.bounds.size.width, _view.bounds.size.width / _streamAspectRatio);
