@@ -112,6 +112,10 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
         [self addGestureRecognizer:stylusHoverRecognizer];
     }
 #endif
+
+    UIPinchGestureRecognizer *pinchZoomRecognizer = [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(pinchZoomChanged:)];
+    pinchZoomRecognizer.cancelsTouchesInView = NO;
+    [self addGestureRecognizer:pinchZoomRecognizer];
 #endif
     
     x1mouse = [[X1Mouse alloc] init];
@@ -709,6 +713,16 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
 - (UIPointerStyle *)pointerInteraction:(UIPointerInteraction *)interaction styleForRegion:(UIPointerRegion *)region  API_AVAILABLE(ios(13.4)) {
     // Always hide the mouse cursor over our stream view
     return [UIPointerStyle hiddenPointerStyle];
+}
+
+- (void)pinchZoomChanged:(UIPinchGestureRecognizer*)recognizer {
+    if (recognizer.state != UIGestureRecognizerStateChanged) return;
+    CGFloat scaleDelta = recognizer.scale - 1.0;
+    recognizer.scale = 1.0;
+    short scrollAmount = (short)(scaleDelta * 2400);
+    if (scrollAmount != 0) {
+        LiSendHighResScrollEvent(scrollAmount);
+    }
 }
 
 - (void)mouseWheelMovedContinuous:(UIPanGestureRecognizer *)gesture {
