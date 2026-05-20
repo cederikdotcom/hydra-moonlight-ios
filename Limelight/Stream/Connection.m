@@ -260,14 +260,27 @@ int ArInit(int audioConfiguration, POPUS_MULTISTREAM_CONFIGURATION opusConfig, v
     
     // Use PlayAndRecord so microphone relay (hydravoie) can capture while stream plays.
     // MixWithOthers suppresses the DuckOthers flag SDL sets by default.
-    // overrideOutputAudioPort routes to the built-in speaker when no external audio
-    // device is connected, but defers to the external device when one is present.
-    // DefaultToSpeaker must NOT be used here — it forces the built-in speaker even
-    // when an external USB or headphone device is connected, silencing it.
+    // Only override to the built-in speaker when no external output device is present.
+    // USB-C/Lightning EarPods appear as AVAudioSessionPortUSBAudio; overrideOutputAudioPort
+    // with AVAudioSessionPortOverrideSpeaker forces to the built-in speaker and ignores them.
+    // Passing AVAudioSessionPortOverrideNone lets the session route to the connected device.
     [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayAndRecord
                                      withOptions:AVAudioSessionCategoryOptionMixWithOthers
                                            error:nil];
-    [[AVAudioSession sharedInstance] overrideOutputAudioPort:AVAudioSessionPortOverrideSpeaker error:nil];
+    BOOL hasExternalOutput = NO;
+    for (AVAudioSessionPortDescription *port in [AVAudioSession sharedInstance].currentRoute.outputs) {
+        if ([port.portType isEqualToString:AVAudioSessionPortHeadphones] ||
+            [port.portType isEqualToString:AVAudioSessionPortUSBAudio] ||
+            [port.portType isEqualToString:AVAudioSessionPortBluetoothA2DP] ||
+            [port.portType isEqualToString:AVAudioSessionPortBluetoothHFP] ||
+            [port.portType isEqualToString:AVAudioSessionPortBluetoothLE]) {
+            hasExternalOutput = YES;
+            break;
+        }
+    }
+    AVAudioSessionPortOverride portOverride = hasExternalOutput ? AVAudioSessionPortOverrideNone : AVAudioSessionPortOverrideSpeaker;
+    HydraLog(@"ArInit: audio output override=%@ (hasExternalOutput=%d)", hasExternalOutput ? @"none" : @"speaker", hasExternalOutput);
+    [[AVAudioSession sharedInstance] overrideOutputAudioPort:portOverride error:nil];
     
     return 0;
 }
