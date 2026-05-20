@@ -8,6 +8,7 @@
 
 #import "Connection.h"
 #import "Utils.h"
+#import "HydraLog.h"
 
 #import <VideoToolbox/VideoToolbox.h>
 
@@ -477,7 +478,9 @@ void ClSetControllerLED(uint16_t controllerNumber, uint8_t r, uint8_t g, uint8_t
 
 -(void) main
 {
+    HydraLog(@"Connection: acquiring initLock (host=%s VPN=%@)...", _hostString, [Utils isActiveNetworkVPN] ? @"YES" : @"NO");
     [initLock lock];
+    HydraLog(@"Connection: initLock acquired — calling LiStartConnection...");
     LiStartConnection(&_serverInfo,
                       &_streamConfig,
                       &_clCallbacks,
@@ -485,6 +488,7 @@ void ClSetControllerLED(uint16_t controllerNumber, uint8_t r, uint8_t g, uint8_t
                       &_arCallbacks,
                       NULL, 0,
                       NULL, 0);
+    HydraLog(@"Connection: LiStartConnection returned — releasing initLock");
     [initLock unlock];
 }
 

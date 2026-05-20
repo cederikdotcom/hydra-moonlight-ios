@@ -7,6 +7,7 @@
 //
 
 #import "StreamFrameViewController.h"
+#import "HydraLog.h"
 #import "MainFrameViewController.h"
 #import "VideoDecoderRenderer.h"
 #import "StreamManager.h"
@@ -397,6 +398,8 @@
 }
 
 - (void) connectionStarted {
+    HydraLog(@"connectionStarted — all stages complete (hydraConnectionStartedCallback %@)",
+             self.hydraConnectionStartedCallback ? @"SET" : @"NIL");
     Log(LOG_I, @"Connection started");
     _connectionStarted = YES;
     if (self.hydraConnectionStartedCallback) {
@@ -511,6 +514,7 @@
 }
 
 - (void) stageStarting:(const char*)stageName {
+    HydraLog(@"Stage starting: %s (hydraStageStarted block %@)", stageName, self.hydraStageStarted ? @"SET" : @"NIL");
     Log(LOG_I, @"Starting %s", stageName);
     NSString *stageStr = [NSString stringWithUTF8String:stageName];
     if (self.hydraStageStarted) {
@@ -568,6 +572,7 @@
 }
 
 - (void) launchFailed:(NSString*)message {
+    HydraLog(@"launchFailed: %@ (hydraErrorCallback %@)", message, self.hydraErrorCallback ? @"SET" : @"NIL");
     Log(LOG_I, @"Launch failed: %@", message);
 
     dispatch_async(dispatch_get_main_queue(), ^{

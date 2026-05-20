@@ -10,6 +10,7 @@
 #import "CryptoManager.h"
 #import "HttpManager.h"
 #import "Utils.h"
+#import "HydraLog.h"
 
 #import "StreamView.h"
 #import "ServerInfoResponse.h"
@@ -40,11 +41,14 @@
 }
 
 - (void)main {
+    HydraLog(@"StreamManager: main START — host=%@ app=%@ httpsPort=%d", _config.host, _config.appName, _config.httpsPort);
+
     [CryptoManager generateKeyPairUsingSSL];
-    
+    HydraLog(@"StreamManager: crypto ready — making serverinfo HTTPS to %@:%d...", _config.host, _config.httpsPort);
+
     HttpManager* hMan = [[HttpManager alloc] initWithAddress:_config.host httpsPort:_config.httpsPort
                                                      serverCert:_config.serverCert];
-    
+
     ServerInfoResponse* serverInfoResp = [[ServerInfoResponse alloc] init];
     [hMan executeRequestSynchronously:[HttpRequest requestForResponse:serverInfoResp withUrlRequest:[hMan newServerInfoRequest:false]
                                        fallbackError:401 fallbackRequest:[hMan newHttpServerInfoRequest]]];
@@ -52,77 +56,85 @@
     NSString* appversion = [serverInfoResp getStringTag:@"appversion"];
     NSString* gfeVersion = [serverInfoResp getStringTag:@"GfeVersion"];
     NSString* serverState = [serverInfoResp getStringTag:@"state"];
+    HydraLog(@"StreamManager: serverinfo done — statusCode=%d pairStatus=%@ state=%@ appVersion=%@",
+             serverInfoResp.statusCode, pairStatus, serverState, appversion);
+
     if (![serverInfoResp isStatusOk]) {
+        HydraLog(@"StreamManager: serverinfo FAILED — %@", serverInfoResp.statusMessage);
         [_callbacks launchFailed:serverInfoResp.statusMessage];
         return;
     }
     else if (pairStatus == NULL || appversion == NULL || serverState == NULL) {
+        HydraLog(@"StreamManager: serverinfo missing fields — pairStatus=%@ appversion=%@ state=%@", pairStatus, appversion, serverState);
         [_callbacks launchFailed:@"Failed to connect to PC"];
         return;
     }
-    
+
     if (![pairStatus isEqualToString:@"1"]) {
-        // Not paired
+        HydraLog(@"StreamManager: not paired — pairStatus=%@", pairStatus);
         [_callbacks launchFailed:@"Device not paired to PC"];
         return;
     }
-    
+
     // Only perform this check on GFE (as indicated by MJOLNIR in state value)
     if ((_config.width > 4096 || _config.height > 4096) && [serverState containsString:@"MJOLNIR"]) {
-        // Pascal added support for 8K HEVC encoding support. Maxwell 2 could encode HEVC but only up to 4K.
-        // We can't directly identify Pascal, but we can look for HEVC Main10 which was added in the same generation.
         NSString* codecSupport = [serverInfoResp getStringTag:@"ServerCodecModeSupport"];
         if (codecSupport == nil || !([codecSupport intValue] & 0x200)) {
             [_callbacks launchFailed:@"Your host PC's GPU doesn't support streaming video resolutions over 4K."];
             return;
         }
     }
-    
+
     // Populate the config's version fields from serverinfo
     _config.appVersion = appversion;
     _config.gfeVersion = gfeVersion;
 
-    // Resolve the Sunshine app ID by name so callers don't need to know the numeric ID.
-    // Sunshine assigns opaque integer IDs at app creation time; appID=0 is not a valid
-    // stand-in. Without this lookup, /launch always fails with gameSession=0.
     if (_config.appName.length > 0) {
+        HydraLog(@"StreamManager: making applist HTTPS...");
         AppListResponse *appListResp = [[AppListResponse alloc] init];
         [hMan executeRequestSynchronously:[HttpRequest requestForResponse:appListResp
             withUrlRequest:[hMan newAppListRequest]]];
+        HydraLog(@"StreamManager: applist done — statusCode=%d", appListResp.statusCode);
         if ([appListResp isStatusOk]) {
-            for (TemporaryApp *app in [appListResp getAppList]) {
+            NSArray *apps = [appListResp getAppList];
+            HydraLog(@"StreamManager: applist has %lu apps", (unsigned long)apps.count);
+            for (TemporaryApp *app in apps) {
                 if ([app.name isEqualToString:_config.appName]) {
                     _config.appID = app.id;
                     break;
                 }
             }
+        } else {
+            HydraLog(@"StreamManager: applist FAILED — statusCode=%d", appListResp.statusCode);
         }
+        HydraLog(@"StreamManager: resolved appID='%@' for app='%@'", _config.appID, _config.appName);
         Log(LOG_I, @"Launching appID '%@' for app '%@'", _config.appID, _config.appName);
     }
 
-    // resumeApp and launchApp handle calling launchFailed
     NSString* sessionUrl;
     if ([serverState hasSuffix:@"_SERVER_BUSY"]) {
-        // App already running, resume it
+        HydraLog(@"StreamManager: server BUSY — resuming app appID=%@...", _config.appID);
         if (![self resumeApp:hMan receiveSessionUrl:&sessionUrl]) {
             return;
         }
     } else {
-        // Start app
+        HydraLog(@"StreamManager: server IDLE — launching app appID=%@...", _config.appID);
         if (![self launchApp:hMan receiveSessionUrl:&sessionUrl]) {
             return;
         }
     }
-    
-    // Populate RTSP session URL from launch/resume response
+
     _config.rtspSessionUrl = sessionUrl;
-    
-    // Initializing the renderer must be done on the main thread
+    HydraLog(@"StreamManager: launch/resume OK — sessionUrl=%@ — dispatching LiStartConnection to main queue", sessionUrl);
+
     dispatch_async(dispatch_get_main_queue(), ^{
+        HydraLog(@"StreamManager: [main queue] creating VideoDecoderRenderer + Connection (VPN=%@)...",
+                 [Utils isActiveNetworkVPN] ? @"YES" : @"NO");
         VideoDecoderRenderer* renderer = [[VideoDecoderRenderer alloc] initWithView:self->_renderView callbacks:self->_callbacks streamAspectRatio:(float)self->_config.width / (float)self->_config.height useFramePacing:self->_config.useFramePacing];
         self->_connection = [[Connection alloc] initWithConfig:self->_config renderer:renderer connectionCallbacks:self->_callbacks];
         NSOperationQueue* opQueue = [[NSOperationQueue alloc] init];
         [opQueue addOperation:self->_connection];
+        HydraLog(@"StreamManager: [main queue] Connection enqueued — LiStartConnection will run on bg thread");
     });
 }
 
@@ -132,38 +144,46 @@
 }
 
 - (BOOL) launchApp:(HttpManager*)hMan receiveSessionUrl:(NSString**)sessionUrl {
+    HydraLog(@"StreamManager: /launch HTTPS request starting (appID=%@, timeout=60s)...", _config.appID);
     HttpResponse* launchResp = [[HttpResponse alloc] init];
     [hMan executeRequestSynchronously:[HttpRequest requestForResponse:launchResp withUrlRequest:[hMan newLaunchOrResumeRequest:@"launch" config:_config]]];
     NSString *gameSession = [launchResp getStringTag:@"gamesession"];
+    HydraLog(@"StreamManager: /launch response — statusCode=%d gameSession=%@", launchResp.statusCode, gameSession);
     if (![launchResp isStatusOk]) {
+        HydraLog(@"StreamManager: /launch FAILED — statusCode=%d message=%@", launchResp.statusCode, launchResp.statusMessage);
         [_callbacks launchFailed:launchResp.statusMessage];
         Log(LOG_E, @"Failed Launch Response: %@", launchResp.statusMessage);
         return FALSE;
     } else if (gameSession == NULL || [gameSession isEqualToString:@"0"]) {
+        HydraLog(@"StreamManager: /launch FAILED — gameSession null or zero");
         [_callbacks launchFailed:@"Failed to launch app"];
         Log(LOG_E, @"Failed to parse game session");
         return FALSE;
     }
-    
     *sessionUrl = [launchResp getStringTag:@"sessionUrl0"];
+    HydraLog(@"StreamManager: /launch OK — gameSession=%@ sessionUrl=%@", gameSession, *sessionUrl);
     return TRUE;
 }
 
 - (BOOL) resumeApp:(HttpManager*)hMan receiveSessionUrl:(NSString**)sessionUrl {
+    HydraLog(@"StreamManager: /resume HTTPS request starting (appID=%@, timeout=60s)...", _config.appID);
     HttpResponse* resumeResp = [[HttpResponse alloc] init];
     [hMan executeRequestSynchronously:[HttpRequest requestForResponse:resumeResp withUrlRequest:[hMan newLaunchOrResumeRequest:@"resume" config:_config]]];
     NSString* resume = [resumeResp getStringTag:@"resume"];
+    HydraLog(@"StreamManager: /resume response — statusCode=%d resume=%@", resumeResp.statusCode, resume);
     if (![resumeResp isStatusOk]) {
+        HydraLog(@"StreamManager: /resume FAILED — statusCode=%d message=%@", resumeResp.statusCode, resumeResp.statusMessage);
         [_callbacks launchFailed:resumeResp.statusMessage];
         Log(LOG_E, @"Failed Resume Response: %@", resumeResp.statusMessage);
         return FALSE;
     } else if (resume == NULL || [resume isEqualToString:@"0"]) {
+        HydraLog(@"StreamManager: /resume FAILED — resume null or zero");
         [_callbacks launchFailed:@"Failed to resume app"];
         Log(LOG_E, @"Failed to parse resume response");
         return FALSE;
     }
-    
     *sessionUrl = [resumeResp getStringTag:@"sessionUrl0"];
+    HydraLog(@"StreamManager: /resume OK — sessionUrl=%@", *sessionUrl);
     return TRUE;
 }
 

@@ -24,6 +24,10 @@
 
 @property (nonatomic, weak) id<HydraStreamSessionDelegate> delegate;
 
+// Register the global ObjC→AppLogger callback. Call once at app launch.
+// Logs from ALL sessions flow through this regardless of per-session delegate state.
++ (void)setGlobalLogCallback:(void (^)(NSString *message))callback;
+
 // Present a full-screen stream to the given host and app.
 // host         — IP address (LAN or WireGuard) of the Sunshine body
 // appName      — experience name as registered in Sunshine (e.g. "mercator-talks")

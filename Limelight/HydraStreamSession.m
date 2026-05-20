@@ -4,8 +4,28 @@
 //
 
 #import "HydraStreamSession.h"
+#import "HydraLog.h"
 #import "StreamFrameViewController.h"
 #import "StreamConfiguration.h"
+
+// ── Global ObjC→AppLogger bridge ──────────────────────────────────────────────
+// Survives across session teardowns; safe to set once at app start and forget.
+static void (^_hydraLogCallback)(NSString *);
+
+void HydraSetGlobalLogCallback(void (^callback)(NSString *)) {
+    _hydraLogCallback = callback ? [callback copy] : nil;
+}
+
+void HydraLog(NSString *format, ...) {
+    va_list args;
+    va_start(args, format);
+    NSString *msg = [[NSString alloc] initWithFormat:format arguments:args];
+    va_end(args);
+    NSLog(@"[HydraLog] %@", msg);
+    void (^cb)(NSString *) = _hydraLogCallback;
+    if (cb) { cb(msg); }
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 // VIDEO_FORMAT flags from moonlight-common-c (Moonlight.h)
 #ifndef VIDEO_FORMAT_H264
@@ -25,6 +45,10 @@
 
 @implementation HydraStreamSession
 
++ (void)setGlobalLogCallback:(void (^)(NSString *))callback {
+    HydraSetGlobalLogCallback(callback);
+}
+
 - (void)startWithHost:(NSString *)host
               appName:(NSString *)appName
                 width:(int)width
@@ -33,6 +57,8 @@
            serverCert:(NSData *)serverCert
             presenter:(UIViewController *)presenter {
 
+    HydraLog(@"HydraStreamSession: startWithHost host=%@ app=%@ %dx%d %dkbps cert=%luB",
+             host, appName, width, height, bitrateKbps, (unsigned long)serverCert.length);
     self.presenter = presenter;
     self.sunshineHost = host;
     self.sunshineHttpsPort = 47984;
@@ -112,8 +138,10 @@
         [s stop];
     };
 
+    HydraLog(@"HydraStreamSession: presenting StreamFrameViewController (dispatching to main)...");
     dispatch_async(dispatch_get_main_queue(), ^{
         [presenter presentViewController:vc animated:NO completion:^{
+            HydraLog(@"HydraStreamSession: StreamFrameViewController presented — StreamManager running");
             [self addExitMenuToVC:vc];
             if ([self.delegate respondsToSelector:@selector(streamSessionDidConnect)]) {
                 [self.delegate streamSessionDidConnect];
@@ -197,6 +225,7 @@
 }
 
 - (void)stop {
+    HydraLog(@"HydraStreamSession: stop() called — sending /cancel + dismissing VC");
     [self sendCancelToSunshine];
     dispatch_async(dispatch_get_main_queue(), ^{
         if (self.streamVC && self.streamVC.presentingViewController) {
