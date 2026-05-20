@@ -163,6 +163,12 @@ If logs stop mid-sequence, the gap between the last entry and the next one (or t
 - Reading the log: check the `ArInit:` entry for `channels=N` and the SDL error line immediately after. channels=2 + `SDL_Init(audio) failed: Application didn't initialize properly` → root cause A (update to v0.2.92). channels > 2 + open failure → root cause B (Sunshine surround config issue, stereo fallback should recover).
 - If `SDL_OpenAudioDevice` fails with channels=2 (root cause C — unexpected): the `ArInit: SDL_OpenAudioDevice failed (channels=2 freq=N): <SDL error>` line gives the SDL reason. Check iOS AVAudioSession state.
 
+**Stream does not fill iPad screen width — black bars visible on left and right**
+- Symptom: video is centred with black bars on both sides (pillarboxed). Affects portrait streams (1080x1920) on iPads whose aspect ratio is wider than 9:16 (e.g. iPad 10th gen ~3:4).
+- Cause: `VideoDecoderRenderer` and `StreamView` used aspect-fit sizing — the display layer was scaled to fit entirely within the view bounds, leaving bars on whichever axis had spare space.
+- Fixed (d6c2c72): condition inverted from `width > height * ratio` to `width < height * ratio` in `VideoDecoderRenderer.reinitializeDisplayLayer`, `StreamView.layoutSublayers`, `StreamView.getVideoAreaSize`, and the pointer-region helper. The layer now scales to fill the constraining dimension; content that overflows the opposite axis is clipped at the screen edge.
+- If bars reappear: check that all four `>` comparisons in those methods have been changed to `<` — an upstream rebase could revert them.
+
 **Portrait stream renders landscape on body — Sunshine keeps VDD at 1920x1080**
 - Symptom: iPad requests portrait resolution (1080x1920) but the body displays the stream in landscape (1920x1080). Sunshine log contains "Optimize game settings is not set in the client! Resolution will not be changed."
 - Cause: `config.optimizeGameSettings = NO` in `HydraStreamSession`. Sunshine's `dd_resolution_option=auto` only switches the virtual display driver to match the client-requested resolution when the Moonlight client sends the `optimizeGameSettings=true` flag. With it disabled, Sunshine ignores the resolution hint and keeps the display at its current setting.
