@@ -166,13 +166,23 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
 
 - (void)layoutSubviews {
     [super layoutSubviews];
-    // Stream AR matches device AR — reposition layer to fill bounds on rotation.
+    if (streamAspectRatio <= 0) return;
+    CGSize videoSize;
+    if (self.bounds.size.width > self.bounds.size.height * streamAspectRatio) {
+        videoSize = CGSizeMake(self.bounds.size.height * streamAspectRatio, self.bounds.size.height);
+    } else {
+        videoSize = CGSizeMake(self.bounds.size.width, self.bounds.size.width / streamAspectRatio);
+    }
+    CGPoint center = CGPointMake(CGRectGetMidX(self.bounds), CGRectGetMidY(self.bounds));
+    CGRect layerBounds = CGRectMake(0, 0, videoSize.width, videoSize.height);
+    // Reposition the AVSampleBufferDisplayLayer on rotation without animating the move.
     Class displayLayerClass = NSClassFromString(@"AVSampleBufferDisplayLayer");
     for (CALayer *sublayer in self.layer.sublayers) {
         if ([sublayer isKindOfClass:displayLayerClass]) {
             [CATransaction begin];
             [CATransaction setDisableActions:YES];
-            sublayer.frame = self.bounds;
+            sublayer.position = center;
+            sublayer.bounds = layerBounds;
             [CATransaction commit];
         }
     }
@@ -188,8 +198,11 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
 }
 
 - (CGSize) getVideoAreaSize {
-    // Stream AR matches device AR — video fills the full view.
-    return self.bounds.size;
+    if (self.bounds.size.width > self.bounds.size.height * streamAspectRatio) {
+        return CGSizeMake(self.bounds.size.height * streamAspectRatio, self.bounds.size.height);
+    } else {
+        return CGSizeMake(self.bounds.size.width, self.bounds.size.width / streamAspectRatio);
+    }
 }
 
 - (CGPoint) adjustCoordinatesForVideoArea:(CGPoint)point {
@@ -672,14 +685,25 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
         }
     }
     
+    // This logic mimics what iOS does with AVLayerVideoGravityResizeAspect
+    CGSize videoSize;
+    CGPoint videoOrigin;
+    if (self.bounds.size.width > self.bounds.size.height * streamAspectRatio) {
+        videoSize = CGSizeMake(self.bounds.size.height * streamAspectRatio, self.bounds.size.height);
+    } else {
+        videoSize = CGSizeMake(self.bounds.size.width, self.bounds.size.width / streamAspectRatio);
+    }
+    videoOrigin = CGPointMake(self.bounds.size.width / 2 - videoSize.width / 2,
+                              self.bounds.size.height / 2 - videoSize.height / 2);
+
     // Move the cursor on the host if no buttons are pressed.
     // Motion with buttons pressed in handled in touchesMoved:
     if (lastMouseButtonMask == 0) {
         [self updateCursorLocation:request.location isMouse:YES];
     }
 
-    // Stream AR matches device AR — pointer region covers the full view.
-    return [UIPointerRegion regionWithRect:self.bounds identifier:nil];
+    // The pointer interaction should cover the video region only
+    return [UIPointerRegion regionWithRect:CGRectMake(videoOrigin.x, videoOrigin.y, videoSize.width, videoSize.height) identifier:nil];
 }
 
 - (UIPointerStyle *)pointerInteraction:(UIPointerInteraction *)interaction styleForRegion:(UIPointerRegion *)region  API_AVAILABLE(ios(13.4)) {

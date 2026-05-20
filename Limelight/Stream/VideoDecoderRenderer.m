@@ -44,8 +44,18 @@ extern int ff_isom_write_av1c(AVIOContext *pb, const uint8_t *buf, int size,
     displayLayer = [[AVSampleBufferDisplayLayer alloc] init];
     displayLayer.backgroundColor = [UIColor blackColor].CGColor;
     
-    // Stream resolution matches the device AR exactly — fill bounds directly.
-    displayLayer.frame = _view.bounds;
+    // Size the display layer to fit the stream within the view (aspect fit). Bars appear
+    // on whichever axis has spare space. We avoid AVLayerVideoGravityResizeAspect because
+    // it respects the PAR encoded in the SPS, which causes touch location mapping to be
+    // wrong in StreamView when the host desktop and stream aspect ratios differ.
+    CGSize videoSize;
+    if (_view.bounds.size.width > _view.bounds.size.height * _streamAspectRatio) {
+        videoSize = CGSizeMake(_view.bounds.size.height * _streamAspectRatio, _view.bounds.size.height);
+    } else {
+        videoSize = CGSizeMake(_view.bounds.size.width, _view.bounds.size.width / _streamAspectRatio);
+    }
+    displayLayer.position = CGPointMake(CGRectGetMidX(_view.bounds), CGRectGetMidY(_view.bounds));
+    displayLayer.bounds = CGRectMake(0, 0, videoSize.width, videoSize.height);
     displayLayer.videoGravity = AVLayerVideoGravityResize;
 
     // Hide the layer until we get an IDR frame. This ensures we

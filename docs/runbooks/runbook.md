@@ -171,11 +171,12 @@ If logs stop mid-sequence, the gap between the last entry and the next one (or t
 - Reading the log: check the `ArInit:` entry for `channels=N` and the SDL error line immediately after. channels=2 + `SDL_Init(audio) failed: Application didn't initialize properly` → root cause A (update to v0.2.92). channels > 2 + open failure → root cause B (Sunshine surround config issue, stereo fallback should recover).
 - If `SDL_OpenAudioDevice` fails with channels=2 (root cause C — unexpected): the `ArInit: SDL_OpenAudioDevice failed (channels=2 freq=N): <SDL error>` line gives the SDL reason. Check iOS AVAudioSession state.
 
-**Stream does not fill iPad screen — black bars or cropped UI visible**
-- Symptom: video is pillarboxed (bars on sides) or letterboxed (bars top/bottom), or Mercator/other experience UI elements are cropped at the edges.
-- Root cause: stream resolution does not match the device's screen aspect ratio. Any aspect-scaling (fit or fill) causes either bars or cropping.
-- Fix (v0.2.104 / d2111c9): `VideoDecoderRenderer.reinitializeDisplayLayer` and `StreamView.layoutSubviews` now set `displayLayer.frame = view.bounds` directly — no aspect calculation. `StreamView.getVideoAreaSize` returns `self.bounds.size`. The stream resolution is derived in `ContentView.nativeStreamDimensions` from `UIWindowScene.screen.nativeBounds`, matching the experience orientation, so stream AR = device AR = no scaling required.
-- If bars or cropping reappear: (1) confirm `nativeStreamDimensions` is being called from ContentView and passing device native bounds (not the catalog's fixed 1080×1920); (2) confirm `displayLayer.frame = _view.bounds` in `VideoDecoderRenderer` and `sublayer.frame = self.bounds` in `StreamView.layoutSubviews` — an upstream rebase could revert them to aspect-fit arithmetic.
+**Stream shows bars on sides (pillarboxed) — portrait experience on a 3:4 iPad**
+- Symptom: portrait experience (e.g. mercator-talks, catalog resolution 1080×1920) shows black bars on left and right because the iPad's native aspect ratio (3:4) is wider than the 9:16 stream.
+- Root cause: catalog resolution 1080×1920 (9:16) does not match the iPad's physical AR (3:4). Aspect-fit scaling adds bars; aspect-fill cropping cuts UI content.
+- Current state (v0.2.114): aspect-fit is used — bars visible, but all content intact. This is the safer choice until the catalog resolution is updated.
+- Proper fix (tracked separately): change the mercator-talks catalog resolution to a 3:4 portrait resolution (e.g. 1080×1440) so stream AR = iPad AR. Requires confirming the VDD on each body supports that mode, updating the experience config in HydraCluster, and updating hydrabody's UE launch args. See issue tracker.
+- Do NOT use the device native resolution (e.g. 2064×2752) as the stream resolution: the VDD's mode list does not include it, so Sunshine cannot switch and the VDD stays at its default 1920×1080 landscape — UE launches portrait on a landscape VDD, producing a desktop instead of the experience.
 
 **Portrait stream renders landscape on body — Sunshine keeps VDD at 1920x1080**
 - Symptom: iPad requests portrait resolution (1080x1920) but the body displays the stream in landscape (1920x1080). Sunshine log contains "Optimize game settings is not set in the client! Resolution will not be changed."
