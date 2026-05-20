@@ -44,7 +44,8 @@ All subsequent log calls from any session — including during failed sessions w
 - `StreamManager: launch/resume OK — dispatching LiStartConnection` — HTTPS phase complete
 - `Connection: acquiring initLock` — Connection.main() started on opQueue thread
 - `Connection: calling LiStartConnection` — moonlight-common-c protocol begins
-- `[C] Starting audio stream...` / `[C] ...failed: -1` — C-level Limelog entries from moonlight-common-c (AudioStream.c, etc.) — visible in-app since v0.2.89
+- `ArInit: sampleRate=N channels=N ...` — Opus config Sunshine negotiated; channels > 2 triggers stereo fallback (v0.2.90+)
+- `[C] Starting audio stream...` / `[C] Audio stream start failed: -1` — C-level Limelog; if ArInit SDL error follows, shows why SDL_OpenAudioDevice failed
 - `Stage starting: <name>` — each moonlight stage logs this with block state (SET/NIL)
 - `connectionStarted` — all stages complete, video should appear
 
@@ -149,6 +150,13 @@ If logs stop mid-sequence, the gap between the last entry and the next one (or t
   **(2) `MAGIC_BYTE_FROM_AUDIO_CONFIG(audioConfiguration) != 0xCA`** — fixed in v0.2.88. `audioConfiguration` must be constructed via `MAKE_AUDIO_CONFIGURATION(channelCount, channelMask)` which embeds `0xCA` as the low byte (magic sentinel). Setting it to a raw integer (e.g. `1`) fails this check. `HydraStreamSession` now uses `AUDIO_CONFIGURATION_STEREO` (= `MAKE_AUDIO_CONFIGURATION(2, 0x3)` = `0x302CA`).
 
 - If the symptom recurs: add temporary `NSLog` or stderr output inside the `if (serverCodecModeSupport == 0)` and `if (MAGIC_BYTE_FROM_AUDIO_CONFIG(...) != 0xCA)` blocks in moonlight-common-c `Connection.c` to identify which check fires.
+
+**Stage 10 (audio stream establishment) fails with errorCode=-1**
+- Symptom: all stages 1-9 complete; stage 10 fails immediately with `[C] Audio stream start failed: -1`. Since v0.2.90 the log also shows `ArInit: sampleRate=N channels=N streams=N ...` at the start of stage 10, and an SDL error message at the failure point.
+- Root cause: `startAudioStream` calls `ArInit` (our SDL audio init callback). `ArInit` calls `SDL_OpenAudioDevice` with the channel count from Sunshine's RTSP SDP Opus config. iOS audio hardware only supports stereo output — if Sunshine sends a surround-sound config (channelCount > `IOS_MAX_AUDIO_CHANNELS` = 2), `SDL_OpenAudioDevice` fails. Since v0.2.90 `ArInit` retries with stereo (2 channels) before giving up.
+- Reading the log: check the `ArInit:` entry for `channels=N`. If N > 2, the stereo fallback should kick in and audio plays. If N = 2 and SDL still fails, the `ArInit: SDL_OpenAudioDevice failed (channels=2 freq=N): <SDL error>` line gives the exact SDL reason.
+- If the stereo fallback fires but audio quality is poor: Sunshine is configured to send surround sound even though the client requested stereo (`AUDIO_CONFIGURATION_STEREO`). Fix on the body: in Sunshine's web UI (`https://<host>:47990`), set Audio → Output Device to VB-Cable and check that surround sound mode is not forced.
+- If `SDL_InitSubSystem` fails: the `ArInit: SDL_InitSubSystem failed: <SDL error>` line appears. This is unexpected on iOS — check iOS AVAudioSession state and whether another process has exclusive audio.
 
 **Exit triggers immediate stream restart — ⋯ button stops responding**
 - Cause: SwiftUI `onAppear` race during UIKit modal dismiss. When `StreamFrameViewController` is dismissed, `UIHostingController` briefly becomes visible → SwiftUI re-fires `onAppear` on `StreamingView` while `appState.state` is still `.streaming` → `StreamSessionBridge.start()` runs a second time → bridge's `session` pointer replaced → first `HydraStreamSession` loses strong reference from bridge → `streamSessionDidStop` fires quickly (from first session's dismiss completion block) → bridge transitions to `.selfService` → bridge deallocs → `delegate` on first session = `nil`.
