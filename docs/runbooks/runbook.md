@@ -102,6 +102,11 @@ Consumed as a git submodule by `cederikdotcom/hydraheadipad` at `Vendors/hydra-m
 - This is expected after `resetEnrollment` (re-enroll gesture: 3-second long-press on the experience grid) or after deleting and reinstalling the app.
 - If pairing loops (alreadyPaired → unpair → alreadyPaired again), check whether `CryptoManager` is generating a new key pair — it should only generate once; `readCertFromFile` must return non-nil on subsequent launches.
 
+**Sunshine keeps streaming after iPad user exits — stream_count stays at 1 on body**
+- Cause: when the user exits before `LiStartConnection` runs (stream stuck on "Starting..."), `_connection` is nil so `[_connection terminate]` is a no-op. Sunshine launched the app and is actively streaming, but moonlight-common-c never established the RTSP control channel, so there is no graceful disconnect path through moonlight-common-c.
+- Fixed: `HydraStreamSession.stop()` now fires `GET https://<host>:47984/cancel?uniqueid=0123456789ABCDEF` as a 3-second fire-and-forget before dismissing the VC. Sunshine terminates the app session immediately on receipt. This mirrors what Moonlight-Qt does on process exit.
+- If Sunshine still keeps streaming after exit: confirm the cancel request reaches port 47984 (`curl -k "https://<host>:47984/cancel?uniqueid=0123456789ABCDEF"` from iPad's network should return an XML response with `<cancel>1</cancel>`).
+
 **Exit triggers immediate stream restart — ⋯ button stops responding**
 - Cause: SwiftUI `onAppear` race during UIKit modal dismiss. When `StreamFrameViewController` is dismissed, `UIHostingController` briefly becomes visible → SwiftUI re-fires `onAppear` on `StreamingView` while `appState.state` is still `.streaming` → `StreamSessionBridge.start()` runs a second time → bridge's `session` pointer replaced → first `HydraStreamSession` loses strong reference from bridge → `streamSessionDidStop` fires quickly (from first session's dismiss completion block) → bridge transitions to `.selfService` → bridge deallocs → `delegate` on first session = `nil`.
 - Consequence: callbacks from the still-running `StreamManager` (stage, launchFailed, connectionStarted) fire into `nil` delegate — nothing is logged, the error is invisible.

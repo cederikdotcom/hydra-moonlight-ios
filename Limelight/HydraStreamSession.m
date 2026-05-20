@@ -13,10 +13,14 @@
 #define VIDEO_FORMAT_H265  0x0100
 #endif
 
-@interface HydraStreamSession ()
+@interface HydraStreamSession () <NSURLSessionDelegate>
 @property (nonatomic, strong) StreamFrameViewController *streamVC;
 @property (nonatomic, weak)   UIViewController *presenter;
 @property (nonatomic, weak)   UIButton *exitButton;
+// Stored at start so stop() can send /cancel even before LiStartConnection ran.
+@property (nonatomic, strong) NSString *sunshineHost;
+@property (nonatomic, assign) unsigned short sunshineHttpsPort;
+@property (nonatomic, strong) NSData *sunshineServerCert;
 @end
 
 @implementation HydraStreamSession
@@ -30,6 +34,9 @@
             presenter:(UIViewController *)presenter {
 
     self.presenter = presenter;
+    self.sunshineHost = host;
+    self.sunshineHttpsPort = 47984;
+    self.sunshineServerCert = serverCert;
 
     StreamConfiguration *config = [[StreamConfiguration alloc] init];
     config.host       = host;
@@ -155,7 +162,42 @@
     [self.streamVC presentViewController:alert animated:YES completion:nil];
 }
 
+// Sends GET /cancel to Sunshine so it terminates the app session immediately.
+// Called from stop() regardless of whether LiStartConnection ran. Without this
+// Sunshine keeps streaming until its own timeout (~30-60s) when the client
+// disconnects mid-launch (before the RTSP control channel was established).
+- (void)sendCancelToSunshine {
+    if (!self.sunshineHost || self.sunshineHttpsPort == 0) return;
+    NSString *urlString = [NSString stringWithFormat:@"https://%@:%u/cancel?uniqueid=0123456789ABCDEF",
+                           self.sunshineHost, self.sunshineHttpsPort];
+    NSURL *url = [NSURL URLWithString:urlString];
+    if (!url) return;
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
+    req.timeoutInterval = 3;
+    NSURLSession *session = [NSURLSession sessionWithConfiguration:[NSURLSessionConfiguration ephemeralSessionConfiguration]
+                                                          delegate:self
+                                                     delegateQueue:nil];
+    [[session dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *resp, NSError *error) {
+        Log(LOG_D, @"Sunshine /cancel: %@ %@", resp, error);
+        [session invalidateAndCancel];
+    }] resume];
+}
+
+// Accept Sunshine's self-signed cert for the /cancel request.
+// This is a fire-and-forget operational call; cert pinning failure would just
+// mean Sunshine keeps streaming until its own timeout, which is worse.
+- (void)URLSession:(NSURLSession *)session didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
+ completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition, NSURLCredential *))completionHandler {
+    if ([challenge.protectionSpace.authenticationMethod isEqualToString:NSURLAuthenticationMethodServerTrust]) {
+        completionHandler(NSURLSessionAuthChallengeUseCredential,
+                          [NSURLCredential credentialForTrust:challenge.protectionSpace.serverTrust]);
+    } else {
+        completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, nil);
+    }
+}
+
 - (void)stop {
+    [self sendCancelToSunshine];
     dispatch_async(dispatch_get_main_queue(), ^{
         if (self.streamVC && self.streamVC.presentingViewController) {
             [self.streamVC dismissViewControllerAnimated:NO completion:^{
