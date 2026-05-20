@@ -186,6 +186,12 @@ void HydraLog(NSString *format, ...) {
                                                   style:UIAlertActionStyleDefault
                                                 handler:^(UIAlertAction *a) { cb(); }]];
     }
+    if (self.viewMicrophoneCallback) {
+        void (^cb)(void) = self.viewMicrophoneCallback;
+        [alert addAction:[UIAlertAction actionWithTitle:@"Microphone"
+                                                  style:UIAlertActionStyleDefault
+                                                handler:^(UIAlertAction *a) { cb(); }]];
+    }
     [alert addAction:[UIAlertAction actionWithTitle:@"Exit experience"
                                               style:UIAlertActionStyleDestructive
                                             handler:^(UIAlertAction *a) { [self stop]; }]];

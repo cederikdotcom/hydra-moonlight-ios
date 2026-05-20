@@ -28,6 +28,10 @@
 // Set this before calling startWithHost:. The block is called on the main thread.
 @property (nonatomic, copy) void (^viewLogsCallback)(void);
 
+// Called when the user taps "Microphone" in the in-stream ⋯ menu.
+// Only added to the menu when this block is non-nil.
+@property (nonatomic, copy) void (^viewMicrophoneCallback)(void);
+
 // Register the global ObjC→AppLogger callback. Call once at app launch.
 // Logs from ALL sessions flow through this regardless of per-session delegate state.
 + (void)setGlobalLogCallback:(void (^)(NSString *message))callback;
