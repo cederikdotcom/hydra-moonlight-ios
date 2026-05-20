@@ -290,26 +290,31 @@ void ArDecodeAndPlaySample(char* sampleData, int sampleLength)
 
 void ClStageStarting(int stage)
 {
+    HydraLog(@"ClStageStarting: stage=%d name=%s", stage, LiGetStageName(stage));
     [_callbacks stageStarting:LiGetStageName(stage)];
 }
 
 void ClStageComplete(int stage)
 {
+    HydraLog(@"ClStageComplete: stage=%d name=%s", stage, LiGetStageName(stage));
     [_callbacks stageComplete:LiGetStageName(stage)];
 }
 
 void ClStageFailed(int stage, int errorCode)
 {
+    HydraLog(@"ClStageFailed: stage=%d name=%s errorCode=%d", stage, LiGetStageName(stage), errorCode);
     [_callbacks stageFailed:LiGetStageName(stage) withError:errorCode portTestFlags:LiGetPortFlagsFromStage(stage)];
 }
 
 void ClConnectionStarted(void)
 {
+    HydraLog(@"ClConnectionStarted");
     [_callbacks connectionStarted];
 }
 
 void ClConnectionTerminated(int errorCode)
 {
+    HydraLog(@"ClConnectionTerminated: errorCode=%d", errorCode);
     [_callbacks connectionTerminated: errorCode];
 }
 
@@ -481,14 +486,14 @@ void ClSetControllerLED(uint16_t controllerNumber, uint8_t r, uint8_t g, uint8_t
     HydraLog(@"Connection: acquiring initLock (host=%s VPN=%@)...", _hostString, [Utils isActiveNetworkVPN] ? @"YES" : @"NO");
     [initLock lock];
     HydraLog(@"Connection: initLock acquired — calling LiStartConnection...");
-    LiStartConnection(&_serverInfo,
-                      &_streamConfig,
-                      &_clCallbacks,
-                      &_drCallbacks,
-                      &_arCallbacks,
-                      NULL, 0,
-                      NULL, 0);
-    HydraLog(@"Connection: LiStartConnection returned — releasing initLock");
+    int liErr = LiStartConnection(&_serverInfo,
+                                  &_streamConfig,
+                                  &_clCallbacks,
+                                  &_drCallbacks,
+                                  &_arCallbacks,
+                                  NULL, 0,
+                                  NULL, 0);
+    HydraLog(@"Connection: LiStartConnection returned %d — releasing initLock", liErr);
     [initLock unlock];
 }
 
