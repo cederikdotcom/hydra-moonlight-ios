@@ -167,6 +167,30 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
 #endif
 }
 
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    if (streamAspectRatio <= 0) return;
+    CGSize videoSize;
+    if (self.bounds.size.width > self.bounds.size.height * streamAspectRatio) {
+        videoSize = CGSizeMake(self.bounds.size.height * streamAspectRatio, self.bounds.size.height);
+    } else {
+        videoSize = CGSizeMake(self.bounds.size.width, self.bounds.size.width / streamAspectRatio);
+    }
+    CGPoint center = CGPointMake(CGRectGetMidX(self.bounds), CGRectGetMidY(self.bounds));
+    CGRect layerBounds = CGRectMake(0, 0, videoSize.width, videoSize.height);
+    // Reposition the AVSampleBufferDisplayLayer on rotation without animating the move.
+    Class displayLayerClass = NSClassFromString(@"AVSampleBufferDisplayLayer");
+    for (CALayer *sublayer in self.layer.sublayers) {
+        if ([sublayer isKindOfClass:displayLayerClass]) {
+            [CATransaction begin];
+            [CATransaction setDisableActions:YES];
+            sublayer.position = center;
+            sublayer.bounds = layerBounds;
+            [CATransaction commit];
+        }
+    }
+}
+
 - (OnScreenControlsLevel) getCurrentOscState {
     if (onScreenControls == nil) {
         return OnScreenControlsLevelOff;
