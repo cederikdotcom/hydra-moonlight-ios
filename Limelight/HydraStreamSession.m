@@ -256,8 +256,18 @@ void HydraLog(NSString *format, ...) {
     [self.streamVC hydraStop];
     [self sendCancelToSunshine];
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (self.streamVC && self.streamVC.presentingViewController) {
-            [self.streamVC dismissViewControllerAnimated:NO completion:^{
+        // Dismiss from the PRESENTING side, not from streamVC itself.
+        // When "Exit experience" is tapped, UIKit fires the UIAlertAction handler
+        // while the action sheet dismiss animation is still in progress. Calling
+        // [streamVC dismiss] at that moment tells UIKit to chain-dismiss the action
+        // sheet (streamVC.presentedViewController), but UIKit is already dismissing
+        // it — the double-dismiss on the same VC triggers a hierarchy inconsistency
+        // assertion and crashes with nothing in the log. Dismissing from
+        // presentingViewController bypasses the action sheet's state machine entirely
+        // and cleanly tears down the full presentation stack from above.
+        UIViewController *presenting = self.streamVC.presentingViewController;
+        if (presenting) {
+            [presenting dismissViewControllerAnimated:NO completion:^{
                 self.streamVC = nil;
                 if ([self.delegate respondsToSelector:@selector(streamSessionDidStop)]) {
                     [self.delegate streamSessionDidStop];
