@@ -12,6 +12,10 @@ This fork adds `HydraStreamSession` — a minimal Objective-C API that lets Hydr
 |------|---------|
 | `Limelight/HydraStreamSession.h` | Public API: `startWithHost:appName:width:height:bitrateKbps:serverCert:presenter:` and `stop` |
 | `Limelight/HydraStreamSession.m` | Wires into `StreamConfiguration` + `StreamFrameViewController` |
+| `Limelight/Input/NativeTouchHandler.h` | Native touch handler interface |
+| `Limelight/Input/NativeTouchHandler.m` | Sends `LiSendTouchEvent()` for true multi-touch passthrough; falls back to absolute mouse when host doesn't support it |
+| `Limelight/Input/StreamView.h` | Exposes `adjustCoordinatesForVideoArea:` and `getVideoAreaSize` (used by `NativeTouchHandler`) |
+| `Limelight/Input/StreamView.m` | Uses `NativeTouchHandler` instead of `RelativeTouchHandler`/`AbsoluteTouchHandler` |
 
 ## How it's consumed
 
@@ -19,7 +23,7 @@ HydraHeadiPad adds this repo as a git submodule at `Vendors/hydra-moonlight-ios/
 
 ## Upstream sync
 
-Commits go directly to `master`. Periodically rebase onto `upstream/master` (moonlight-stream/moonlight-ios) to pick up streaming engine improvements. Our only changes are the two files above — no modifications to upstream streaming logic.
+Commits go directly to `master`. Periodically rebase onto `upstream/master` (moonlight-stream/moonlight-ios) to pick up streaming engine improvements. Hydra-specific changes are the files listed in the table above.
 
 ## Related repos
 

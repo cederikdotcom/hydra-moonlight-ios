@@ -13,6 +13,7 @@
 #import "KeyboardSupport.h"
 #import "RelativeTouchHandler.h"
 #import "AbsoluteTouchHandler.h"
+#import "NativeTouchHandler.h"
 #import "KeyboardInputField.h"
 
 static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
@@ -66,13 +67,9 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     // tvOS requires RelativeTouchHandler to manage Apple Remote input
     self->touchHandler = [[RelativeTouchHandler alloc] initWithView:self];
 #else
-    // iOS uses RelativeTouchHandler or AbsoluteTouchHandler depending on user preference
-    if (settings.absoluteTouchMode) {
-        self->touchHandler = [[AbsoluteTouchHandler alloc] initWithView:self];
-    }
-    else {
-        self->touchHandler = [[RelativeTouchHandler alloc] initWithView:self];
-    }
+    // Use native multi-touch passthrough for Sunshine hosts; falls back to absolute
+    // mouse position events when the connection is not yet fully established.
+    self->touchHandler = [[NativeTouchHandler alloc] initWithView:self];
     
     onScreenControls = [[OnScreenControls alloc] initWithView:self controllerSup:controllerSupport streamConfig:streamConfig];
     OnScreenControlsLevel level = (OnScreenControlsLevel)[settings.onscreenControls integerValue];

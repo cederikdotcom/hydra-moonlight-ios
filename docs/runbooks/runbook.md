@@ -17,6 +17,7 @@ Consumed as a git submodule by `cederikdotcom/hydraheadipad` at `Vendors/hydra-m
 | `Limelight/HydraPairSession.h/.m` | Pairing API — GameStream handshake + Sunshine PIN |
 | `Limelight/HydraOpus.h/.m` | Opus audio encode helper |
 | `Limelight/HydraLog.h` | Global ObjC→AppLogger logging bridge |
+| `Limelight/Input/NativeTouchHandler.h/.m` | Multi-touch passthrough via `LiSendTouchEvent()`; falls back to absolute mouse if host doesn't support it |
 
 ## Diagnostic logging infrastructure
 
@@ -192,4 +193,4 @@ git rebase upstream/master
 git push origin master
 ```
 
-Our additions are isolated to `HydraStreamSession.*`, `HydraPairSession.*`, `HydraOpus.*` — upstream changes to the streaming engine do not touch these files.
+Our additions are in `HydraStreamSession.*`, `HydraPairSession.*`, `HydraOpus.*`, and `Limelight/Input/NativeTouchHandler.*`. `StreamView.h/.m` and `StreamFrameViewController.m` are also lightly patched for layout and touch routing — check these files when rebasing.
