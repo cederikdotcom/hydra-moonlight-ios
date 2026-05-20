@@ -47,7 +47,11 @@
     UIScrollView *_scrollView;
     BOOL _userIsInteracting;
     CGSize _keyboardSize;
-    
+    // Set to YES when connectionStarted fires. Used to skip the resign-active
+    // inactivity timer once streaming is live — applicationDidEnterBackground
+    // handles actual backgrounding; the 60s timer is only needed during setup.
+    BOOL _connectionStarted;
+
 #if !TARGET_OS_TV
     UIScreenEdgePanGestureRecognizer *_exitSwipeRecognizer;
 #endif
@@ -222,6 +226,7 @@
 - (void)willMoveToParentViewController:(UIViewController *)parent {
     // Only cleanup when we're being destroyed
     if (parent == nil) {
+        _connectionStarted = NO;
         [_controllerSupport cleanup];
         [UIApplication sharedApplication].idleTimerDisabled = NO;
         [_streamMan stopStream];
@@ -331,10 +336,22 @@
 - (void)applicationWillResignActive:(NSNotification *)notification {
     if (_inactivityTimer != nil) {
         [_inactivityTimer invalidate];
+        _inactivityTimer = nil;
     }
-    
+
+    if (self.hydraApplicationResignActiveCallback) {
+        self.hydraApplicationResignActiveCallback();
+    }
+
 #if !TARGET_OS_TV
-    // Terminate the stream if the app is inactive for 60 seconds
+    // Skip the inactivity timer once streaming is live. connectionStarted has
+    // already fired, meaning all stages completed and video is flowing.
+    // applicationDidEnterBackground handles true backgrounding (immediate terminate).
+    // The 60s timer is only useful during connection setup (before connectionStarted).
+    if (_connectionStarted) {
+        Log(LOG_I, @"Skipping inactivity timer — stream already connected");
+        return;
+    }
     Log(LOG_I, @"Starting inactivity termination timer");
     _inactivityTimer = [NSTimer scheduledTimerWithTimeInterval:60
                                                       target:self
@@ -381,6 +398,10 @@
 
 - (void) connectionStarted {
     Log(LOG_I, @"Connection started");
+    _connectionStarted = YES;
+    if (self.hydraConnectionStartedCallback) {
+        self.hydraConnectionStartedCallback();
+    }
     dispatch_async(dispatch_get_main_queue(), ^{
         // Leave the spinner spinning until it's obscured by
         // the first frame of video.
@@ -491,6 +512,10 @@
 
 - (void) stageStarting:(const char*)stageName {
     Log(LOG_I, @"Starting %s", stageName);
+    NSString *stageStr = [NSString stringWithUTF8String:stageName];
+    if (self.hydraStageStarted) {
+        self.hydraStageStarted(stageStr);
+    }
     dispatch_async(dispatch_get_main_queue(), ^{
         NSString* lowerCase = [NSString stringWithFormat:@"%s in progress...", stageName];
         NSString* titleCase = [[[lowerCase substringToIndex:1] uppercaseString] stringByAppendingString:[lowerCase substringFromIndex:1]];

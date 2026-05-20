@@ -26,6 +26,11 @@
 // Called by returnToMainFrame instead of popToRootViewControllerAnimated when set.
 // HydraStreamSession sets this to properly dismiss the modal and notify the Swift layer.
 @property (nonatomic, copy) void(^hydraReturnToMainFrame)(void);
+// Diagnostic callbacks — wired by HydraStreamSession to forward log-worthy events
+// that are otherwise only visible in the Xcode console (NSLog/Log(LOG_I, ...)).
+@property (nonatomic, copy) void(^hydraStageStarted)(NSString *stage);
+@property (nonatomic, copy) void(^hydraConnectionStartedCallback)(void);
+@property (nonatomic, copy) void(^hydraApplicationResignActiveCallback)(void);
 
 -(void)updatePreferredDisplayMode:(BOOL)streamActive;
 

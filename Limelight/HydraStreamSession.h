@@ -13,6 +13,11 @@
 - (void)streamSessionDidConnect;
 - (void)streamSessionDidStop;
 - (void)streamSessionDidFailWithError:(NSError *)error;
+@optional
+// Diagnostic callbacks — forward moonlight-common-c events to AppLogger.
+- (void)streamSessionStageStarted:(NSString *)stage;
+- (void)streamSessionConnectionStarted;
+- (void)streamSessionApplicationResignActive;
 @end
 
 @interface HydraStreamSession : NSObject

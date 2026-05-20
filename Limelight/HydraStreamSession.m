@@ -71,6 +71,30 @@
         }
     };
 
+    vc.hydraStageStarted = ^(NSString *stage) {
+        HydraStreamSession *s = weakSelf;
+        if (!s) return;
+        if ([s.delegate respondsToSelector:@selector(streamSessionStageStarted:)]) {
+            [s.delegate streamSessionStageStarted:stage];
+        }
+    };
+
+    vc.hydraConnectionStartedCallback = ^{
+        HydraStreamSession *s = weakSelf;
+        if (!s) return;
+        if ([s.delegate respondsToSelector:@selector(streamSessionConnectionStarted)]) {
+            [s.delegate streamSessionConnectionStarted];
+        }
+    };
+
+    vc.hydraApplicationResignActiveCallback = ^{
+        HydraStreamSession *s = weakSelf;
+        if (!s) return;
+        if ([s.delegate respondsToSelector:@selector(streamSessionApplicationResignActive)]) {
+            [s.delegate streamSessionApplicationResignActive];
+        }
+    };
+
     // returnToMainFrame in the upstream Moonlight VC only pops a navigation stack.
     // Since we present it as a modal, that call is a no-op. This block receives that
     // signal instead and calls stop() which properly dismisses the VC and fires
