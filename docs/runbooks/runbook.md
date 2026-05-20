@@ -17,7 +17,7 @@ Consumed as a git submodule by `cederikdotcom/hydraheadipad` at `Vendors/hydra-m
 | `Limelight/HydraPairSession.h/.m` | Pairing API — GameStream handshake + Sunshine PIN |
 | `Limelight/HydraOpus.h/.m` | Opus audio encode helper |
 | `Limelight/HydraLog.h` | Global ObjC→AppLogger logging bridge |
-| `Limelight/Input/NativeTouchHandler.h/.m` | Multi-touch passthrough via `LiSendTouchEvent()`; falls back to absolute mouse if host doesn't support it |
+| `Limelight/Input/NativeTouchHandler.h/.m` | Single-finger touch → absolute mouse simulation (`LiSendMousePositionEvent` + `LiSendMouseButtonEvent`). Second finger during a press cancels the active click. Two-finger pinch handled by `UIPinchGestureRecognizer` on `StreamView`. |
 
 ## Diagnostic logging infrastructure
 
@@ -201,4 +201,4 @@ git rebase upstream/master
 git push origin master
 ```
 
-Our additions are in `HydraStreamSession.*`, `HydraPairSession.*`, `HydraOpus.*`, and `Limelight/Input/NativeTouchHandler.*`. `StreamView.h/.m` and `StreamFrameViewController.m` are also lightly patched for layout and touch routing — check these files when rebasing.
+Our additions are in `HydraStreamSession.*`, `HydraPairSession.*`, `HydraOpus.*`, and `Limelight/Input/NativeTouchHandler.*`. `StreamView.h/.m` (touch routing, pinch gesture, `getVideoAreaSize`, `adjustCoordinatesForVideoArea:`) and `StreamFrameViewController.m` are also lightly patched — check these files when rebasing.
