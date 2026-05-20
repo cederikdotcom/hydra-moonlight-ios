@@ -136,6 +136,11 @@ If logs stop mid-sequence, the gap between the last entry and the next one (or t
 - This is expected after `resetEnrollment` (re-enroll gesture: 3-second long-press on the experience grid) or after deleting and reinstalling the app.
 - If pairing loops (alreadyPaired → unpair → alreadyPaired again), check whether `CryptoManager` is generating a new key pair — it should only generate once; `readCertFromFile` must return non-nil on subsequent launches.
 
+**Audio continues playing after "Exit experience" — stream_count drops to 0 but audio persists**
+- Cause: `HydraStreamSession.stop()` dismissed the `streamVC` without calling `[_streamMan stopStream]`. `LiStartConnection()` kept running on the opQueue thread with the SDL audio device still open. Audio played in the background until Sunshine timed out (~95 s).
+- Fixed: `stop()` now calls `[self.streamVC hydraStop]` before dismissing. `hydraStop` calls `_streamMan stopStream` → `_connection terminate` → `LiInterruptConnection()` → `LiStartConnection()` returns → `ArCleanup` → `SDL_CloseAudioDevice`. Audio stops within the teardown sequence.
+- If audio persists after exit: confirm `hydraStop` is called before `dismissViewControllerAnimated` in `stop()`.
+
 **Sunshine keeps streaming after iPad user exits — stream_count stays at 1 on body**
 - Cause: when the user exits before `LiStartConnection` runs (stream stuck on "Starting..."), `_connection` is nil so `[_connection terminate]` is a no-op. Sunshine launched the app and is actively streaming, but moonlight-common-c never established the RTSP control channel, so there is no graceful disconnect path through moonlight-common-c.
 - Fixed: `HydraStreamSession.stop()` now fires `GET https://<host>:47984/cancel?uniqueid=0123456789ABCDEF` as a 3-second fire-and-forget before dismissing the VC. Sunshine terminates the app session immediately on receipt. This mirrors what Moonlight-Qt does on process exit.
