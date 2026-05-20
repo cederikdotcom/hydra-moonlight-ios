@@ -204,8 +204,12 @@ int ArInit(int audioConfiguration, POPUS_MULTISTREAM_CONFIGURATION opusConfig, v
     int err;
     SDL_AudioSpec want, have;
 
-    if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0) {
-        HydraLog(@"ArInit: SDL_InitSubSystem failed: %s", SDL_GetError());
+    // SDL_InitSubSystem requires SDL core to be running (via SDL_Init). Since
+    // HydraHeadiPad never goes through the Moonlight/SDL UIKit main loop,
+    // SDL core is never initialized. SDL_Init initializes the core first if
+    // needed, then brings up the requested subsystem — safe to call repeatedly.
+    if (SDL_Init(SDL_INIT_AUDIO) < 0) {
+        HydraLog(@"ArInit: SDL_Init(audio) failed: %s", SDL_GetError());
         return -1;
     }
 
