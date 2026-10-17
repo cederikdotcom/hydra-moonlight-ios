@@ -47,6 +47,14 @@
 // bitrateKbps  — 150000 for LAN, 25000 for WireGuard
 // serverCert   — DER-encoded cert obtained during pairing (nil to skip cert pinning)
 // presenter    — UIViewController to present the stream on top of
+/// Sunshine's `port` setting on the body this session streams from. Every
+/// other port derives from it, and GameStream HTTPS is portBase-5.
+///
+/// A multi-slot body runs one Sunshine per slot, each on its own port family,
+/// so a head fixed on 47989 can only reach slot 0. Defaults to 47989, so a
+/// head told nothing behaves exactly as before. Set it before startWithHost.
+@property (nonatomic, assign) int portBase;
+
 - (void)startWithHost:(NSString *)host
               appName:(NSString *)appName
                 width:(int)width

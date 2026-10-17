@@ -27,6 +27,16 @@ typedef void(^HydraPairCompletion)(NSData * _Nullable serverCert, NSError * _Nul
           sunshineUsername:(NSString *)username
           sunshinePassword:(NSString *)password;
 
+/// Sunshine's `port` setting on the body, which every other port is derived
+/// from: HTTP is portBase, the web API is portBase+1, GameStream HTTPS is
+/// portBase-5.
+///
+/// A body that serves several heads at once runs one Sunshine instance per
+/// slot, each on its own family, so a head that assumes the stock 47989 can
+/// only ever reach slot 0. Defaults to 47989, so a head told nothing behaves
+/// exactly as it always has.
+@property (nonatomic, assign) int portBase;
+
 - (void)pairWithCompletion:(HydraPairCompletion)completion;
 
 @end

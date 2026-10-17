@@ -39,7 +39,7 @@ static NSString *HydraLocalAddressTo(NSString *host) {
     hints.ai_socktype = SOCK_DGRAM;
 
     struct addrinfo *result = NULL;
-    if (getaddrinfo(host.UTF8String, "47990", &hints, &result) != 0 || result == NULL) {
+    if (getaddrinfo(host.UTF8String, [NSString stringWithFormat:@"%d", self.portBase + 1].UTF8String, &hints, &result) != 0 || result == NULL) {
         return nil;
     }
 
@@ -142,6 +142,7 @@ static NSDictionary *HydraSelectPendingPairing(NSArray *pairings, NSString *loca
           sunshinePassword:(NSString *)password {
     self = [super init];
     if (self) {
+        _portBase = 47989;
         _host             = host;
         _sunshineUsername = username;
         _sunshinePassword = password;
@@ -157,11 +158,11 @@ static NSDictionary *HydraSelectPendingPairing(NSArray *pairings, NSString *loca
 
     NSData *clientCert = [CryptoManager readCertFromFile];
 
-    // GameStream HTTP pairing runs on port 47989.
-    // httpsPort:0 lets HttpManager auto-discover the HTTPS port (47984) from
-    // the HTTP /serverinfo response. Passing 47990 (Sunshine's web UI port)
+    // GameStream HTTP pairing runs on portBase (47989 for slot 0).
+    // httpsPort:0 lets HttpManager auto-discover the HTTPS port (portBase-5)
+    // from the HTTP /serverinfo response. Passing the web UI port
     // was wrong — PairManager couldn't get the server cert and never sent /pair.
-    NSString *hostPortString = [NSString stringWithFormat:@"%@:47989", self.host];
+    NSString *hostPortString = [NSString stringWithFormat:@"%@:%d", self.host, self.portBase];
     HttpManager *httpManager = [[HttpManager alloc] initWithAddress:hostPortString
                                                           httpsPort:0
                                                          serverCert:nil];
@@ -177,7 +178,7 @@ static NSDictionary *HydraSelectPendingPairing(NSArray *pairings, NSString *loca
 // MARK: - PairCallback
 
 - (void)startPairing:(NSString *)PIN {
-    // Submit the PIN to Sunshine's web UI at https://<host>:47990/api/pin.
+    // Submit the PIN to Sunshine's web UI at https://<host>:<portBase+1>/api/pin.
     //
     // Timing is critical: Sunshine only accepts the PIN from /api/pin when a
     // /pair?phrase=getservercert request is already pending. PairManager calls
@@ -191,7 +192,7 @@ static NSDictionary *HydraSelectPendingPairing(NSArray *pairings, NSString *loca
     // background queue, arriving at Sunshine while getservercert is pending.
     // This mirrors hydraheadflatscreen's approach: launch Moonlight → wait 1-2s
     // for getservercert to reach Sunshine → then POST the PIN.
-    NSString *urlStr = [NSString stringWithFormat:@"https://%@:47990/api/pin", self.host];
+    NSString *urlStr = [NSString stringWithFormat:@"https://%@:%d/api/pin", self.host, self.portBase + 1];
     NSURL *url = [NSURL URLWithString:urlStr];
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
     req.HTTPMethod = @"POST";
@@ -208,6 +209,7 @@ static NSDictionary *HydraSelectPendingPairing(NSArray *pairings, NSString *loca
     NSMutableURLRequest *capturedReq = req;
     NSString *capturedHost = self.host;
     NSString *capturedAuth = [NSString stringWithFormat:@"Basic %@", base64Credentials];
+    int capturedWebPort = self.portBase + 1;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)),
                    dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         InsecurePinDelegate *delegate = [[InsecurePinDelegate alloc] init];
@@ -226,7 +228,7 @@ static NSDictionary *HydraSelectPendingPairing(NSArray *pairings, NSString *loca
         // and never returns it to the GameStream client, so the authenticated
         // web API is the only way to learn it. The 0.3 s delay above has just
         // guaranteed getservercert is pending, which is when the entry appears.
-        NSDictionary *pending = HydraResolvePendingPairing(session, capturedHost, capturedAuth);
+        NSDictionary *pending = HydraResolvePendingPairing(session, capturedHost, capturedWebPort, capturedAuth);
 
         NSMutableDictionary *payload = [NSMutableDictionary dictionaryWithObject:PIN forKey:@"pin"];
         if (pending != nil) {
@@ -277,8 +279,9 @@ static NSDictionary *HydraSelectPendingPairing(NSArray *pairings, NSString *loca
 /// visible instead of being silently absorbed.
 static NSDictionary *HydraResolvePendingPairing(NSURLSession *session,
                                                 NSString *host,
+                                                int webPort,
                                                 NSString *authorization) {
-    NSString *urlStr = [NSString stringWithFormat:@"https://%@:47990/api/pin", host];
+    NSString *urlStr = [NSString stringWithFormat:@"https://%@:%d/api/pin", host, webPort];
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlStr]];
     req.HTTPMethod = @"GET";
     req.timeoutInterval = 20;
@@ -357,7 +360,7 @@ static NSDictionary *HydraResolvePendingPairing(NSURLSession *session,
     // HydraHeadiPad never calls IdManager.getUniqueId, so the UserDefaults key is never set;
     // reading it would produce an empty string and Sunshine would ignore the unpair request.
     NSString *uniqueId = @"0123456789ABCDEF";
-    NSString *urlStr = [NSString stringWithFormat:@"http://%@:47989/unpair?uniqueid=%@", self.host, uniqueId];
+    NSString *urlStr = [NSString stringWithFormat:@"http://%@:%d/unpair?uniqueid=%@", self.host, self.portBase, uniqueId];
     NSURL *url = [NSURL URLWithString:urlStr];
     NSURLSession *session = [NSURLSession sharedSession];
     HydraPairSession *strongSelf = self;

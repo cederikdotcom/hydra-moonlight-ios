@@ -63,12 +63,13 @@ void HydraLog(NSString *format, ...) {
              host, appName, width, height, bitrateKbps, (unsigned long)serverCert.length);
     self.presenter = presenter;
     self.sunshineHost = host;
-    self.sunshineHttpsPort = 47984;
+    if (self.portBase <= 0) { self.portBase = 47989; }
+    self.sunshineHttpsPort = self.portBase - 5;
     self.sunshineServerCert = serverCert;
 
     StreamConfiguration *config = [[StreamConfiguration alloc] init];
     config.host       = host;
-    config.httpsPort  = 47984; // Sunshine HTTPS GameStream port; 47989 is HTTP-only
+    config.httpsPort  = self.portBase - 5; // GameStream HTTPS; portBase itself is HTTP-only
     config.appName    = appName;
     config.appID      = @"0"; // resolved server-side by Sunshine via app name
     config.width      = width;
