@@ -21,6 +21,7 @@
 // Defined below -startPairing:, which calls it.
 static NSDictionary *HydraResolvePendingPairing(NSURLSession *session,
                                                 NSString *host,
+                                                int webPort,
                                                 NSString *authorization);
 
 /// The local source address this head uses to reach `host`.
@@ -30,7 +31,7 @@ static NSDictionary *HydraResolvePendingPairing(NSURLSession *session,
 /// value Sunshine recorded for our in-flight handshake. Returns nil when the
 /// route cannot be resolved, in which case the caller must not identify its
 /// own pending pairing by address.
-static NSString *HydraLocalAddressTo(NSString *host) {
+static NSString *HydraLocalAddressTo(NSString *host, int port) {
     if (host.length == 0) {
         return nil;
     }
@@ -39,7 +40,7 @@ static NSString *HydraLocalAddressTo(NSString *host) {
     hints.ai_socktype = SOCK_DGRAM;
 
     struct addrinfo *result = NULL;
-    if (getaddrinfo(host.UTF8String, [NSString stringWithFormat:@"%d", self.portBase + 1].UTF8String, &hints, &result) != 0 || result == NULL) {
+    if (getaddrinfo(host.UTF8String, [NSString stringWithFormat:@"%d", port].UTF8String, &hints, &result) != 0 || result == NULL) {
         return nil;
     }
 
@@ -311,7 +312,7 @@ static NSDictionary *HydraResolvePendingPairing(NSURLSession *session,
         if ([parsed isKindOfClass:[NSDictionary class]]) {
             id pairings = ((NSDictionary *)parsed)[@"pairings"];
             if ([pairings isKindOfClass:[NSArray class]]) {
-                selected = HydraSelectPendingPairing(pairings, HydraLocalAddressTo(host));
+                selected = HydraSelectPendingPairing(pairings, HydraLocalAddressTo(host, webPort));
             }
         }
         dispatch_semaphore_signal(done);
