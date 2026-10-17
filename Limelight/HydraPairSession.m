@@ -104,7 +104,18 @@ static NSDictionary *HydraSelectPendingPairing(NSArray *pairings, NSString *loca
                 [matched addObject:entry];
             }
         }
-        candidates = matched;
+        // Zero matches is not ambiguity, it is the absence of a usable
+        // discriminator, and it is the NORMAL state behind a masquerading
+        // neck: the body records the post-NAT address the GL.iNet rewrote us
+        // to, while we compare the private address we hold, so they can never
+        // be equal. Refusing there leaves an iPad behind a neck unable to pair
+        // at all, even pairing alone. Keep the full list in that case, where
+        // exactly one pending entry on a body we are mid-handshake with is
+        // ours. Several entries still decline below, which is what protects a
+        // venue with three iPads behind one neck.
+        if (matched.count > 0) {
+            candidates = matched;
+        }
     }
     if (candidates.count == 1) {
         return candidates.firstObject;
