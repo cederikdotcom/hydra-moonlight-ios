@@ -482,7 +482,19 @@ void ClSetControllerLED(uint16_t controllerNumber, uint8_t r, uint8_t g, uint8_t
     // need to check for that here.
     _streamConfig.encryptionFlags = ENCFLG_ALL;
     
-    if ([Utils isActiveNetworkVPN]) {
+    if (config.packetSizeOverride > 0) {
+        // The head knows this body is reached through a tunnel. It cannot be
+        // detected here: isActiveNetworkVPN only sees a VPN on THIS device,
+        // and a tunnel provided by the venue router is invisible to it.
+        //
+        // It matters because 1392 plus Sunshine's RTP and NV headers makes a
+        // datagram of about 1440 bytes, which does not fit a 1420-byte
+        // WireGuard MTU, so every video packet is split into two IP fragments
+        // and losing either half loses the whole packet.
+        _streamConfig.streamingRemotely = STREAM_CFG_REMOTE;
+        _streamConfig.packetSize = config.packetSizeOverride;
+    }
+    else if ([Utils isActiveNetworkVPN]) {
         // Force remote streaming mode when a VPN is connected
         _streamConfig.streamingRemotely = STREAM_CFG_REMOTE;
         _streamConfig.packetSize = 1024;

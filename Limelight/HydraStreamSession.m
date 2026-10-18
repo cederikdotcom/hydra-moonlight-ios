@@ -77,6 +77,10 @@ void HydraLog(NSString *format, ...) {
     config.frameRate  = 60;
     config.bitRate    = bitrateKbps;
     config.serverCert = serverCert;
+    config.packetSizeOverride = self.packetSizeOverride;
+    if (self.packetSizeOverride > 0) {
+        HydraLog(@"HydraStreamSession: tunnelled body, packet size %d", self.packetSizeOverride);
+    }
 
     // Force H.264 — HEVC causes a silent DR_NEED_IDR loop with certain NVENC
     // configurations (RTX 4000+/Blackwell) where iOS VideoToolbox rejects the

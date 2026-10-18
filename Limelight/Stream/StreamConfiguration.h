@@ -32,4 +32,18 @@
 @property BOOL useFramePacing;
 @property NSData* serverCert;
 
+// Video packet payload size, or 0 to let Connection.m choose.
+//
+// Set this when the body is reached THROUGH A TUNNEL. Moonlight picks 1392
+// unless it detects a local VPN, but 1392 plus Sunshine's RTP and NV headers
+// makes a datagram of roughly 1440 bytes, which does not fit a 1420-byte
+// WireGuard MTU. Every video packet is then split into exactly two IP
+// fragments, and losing either half loses the whole packet. Measured on
+// cosmic: 2.000 fragments per datagram, and the client requesting a keyframe
+// 21 times in 30 seconds.
+//
+// A tunnel provided by the venue router is invisible to isActiveNetworkVPN,
+// so the head has to say so itself.
+@property int packetSizeOverride;
+
 @end

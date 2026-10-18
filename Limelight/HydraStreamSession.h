@@ -55,6 +55,13 @@
 /// head told nothing behaves exactly as before. Set it before startWithHost.
 @property (nonatomic, assign) int portBase;
 
+/// Video packet payload size, or 0 for Moonlight's own choice.
+///
+/// Set it when this body is reached over a tunnel rather than on the venue
+/// LAN. 1392 plus Sunshine's headers overflows a 1420-byte WireGuard MTU and
+/// every video packet is split into two IP fragments.
+@property (nonatomic, assign) int packetSizeOverride;
+
 - (void)startWithHost:(NSString *)host
               appName:(NSString *)appName
                 width:(int)width
