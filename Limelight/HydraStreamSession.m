@@ -7,6 +7,7 @@
 #import "HydraLog.h"
 #import "StreamFrameViewController.h"
 #import "StreamConfiguration.h"
+#import "HttpManager.h"
 
 // ── Global ObjC→AppLogger bridge ──────────────────────────────────────────────
 // Survives across session teardowns; safe to set once at app start and forget.
@@ -35,7 +36,7 @@ void HydraLog(NSString *format, ...) {
 #define AUDIO_CONFIGURATION_STEREO MAKE_AUDIO_CONFIGURATION(2, 0x3)
 #endif
 
-@interface HydraStreamSession () <NSURLSessionDelegate>
+@interface HydraStreamSession ()
 @property (nonatomic, strong) StreamFrameViewController *streamVC;
 @property (nonatomic, weak)   UIViewController *presenter;
 @property (nonatomic, weak)   UIButton *exitButton;
@@ -43,6 +44,8 @@ void HydraLog(NSString *format, ...) {
 @property (nonatomic, strong) NSString *sunshineHost;
 @property (nonatomic, assign) unsigned short sunshineHttpsPort;
 @property (nonatomic, strong) NSData *sunshineServerCert;
+@property (nonatomic, assign) BOOL stopRequested;
+@property (nonatomic, strong) NSError *terminalError;
 @end
 
 @implementation HydraStreamSession
@@ -61,6 +64,8 @@ void HydraLog(NSString *format, ...) {
 
     HydraLog(@"HydraStreamSession: startWithHost host=%@ app=%@ %dx%d %dkbps cert=%luB",
              host, appName, width, height, bitrateKbps, (unsigned long)serverCert.length);
+    self.stopRequested = NO;
+    self.terminalError = nil;
     self.presenter = presenter;
     self.sunshineHost = host;
     if (self.portBase <= 0) { self.portBase = 47989; }
@@ -106,9 +111,14 @@ void HydraLog(NSString *format, ...) {
         NSString *combined = [NSString stringWithFormat:@"%@: %@", title, message];
         NSError *error = [NSError errorWithDomain:@"HydraStream" code:1
                                          userInfo:@{NSLocalizedDescriptionKey: combined}];
-        if ([s.delegate respondsToSelector:@selector(streamSessionDidFailWithError:)]) {
-            [s.delegate streamSessionDidFailWithError:error];
-        }
+        // Keep the Swift state in streaming until cancellation has finished.
+        // Otherwise the error screen can launch a successor before the old
+        // body's delayed /cancel reaches Sunshine.
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (s.stopRequested) return;
+            s.terminalError = error;
+            [s stop];
+        });
     };
 
     vc.hydraStageStarted = ^(NSString *stage) {
@@ -215,75 +225,55 @@ void HydraLog(NSString *format, ...) {
     [self.streamVC presentViewController:alert animated:YES completion:nil];
 }
 
-// Sends GET /cancel to Sunshine so it terminates the app session immediately.
-// Called from stop() regardless of whether LiStartConnection ran. Without this
-// Sunshine keeps streaming until its own timeout (~30-60s) when the client
-// disconnects mid-launch (before the RTSP control channel was established).
+// Use Moonlight's paired TLS client identity and pinned server certificate.
+// An ordinary NSURLSession presents no client certificate, so Sunshine rejects
+// /cancel and keeps the app alive even after the video connection has ended.
+// Runs on a worker queue; stop does not return the user to the catalog until
+// this bounded attempt has completed.
 - (void)sendCancelToSunshine {
     if (!self.sunshineHost || self.sunshineHttpsPort == 0) return;
-    NSString *urlString = [NSString stringWithFormat:@"https://%@:%u/cancel?uniqueid=0123456789ABCDEF",
-                           self.sunshineHost, self.sunshineHttpsPort];
-    NSURL *url = [NSURL URLWithString:urlString];
-    if (!url) return;
-    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
-    req.timeoutInterval = 3;
-    NSURLSession *session = [NSURLSession sessionWithConfiguration:[NSURLSessionConfiguration ephemeralSessionConfiguration]
-                                                          delegate:self
-                                                     delegateQueue:nil];
-    [[session dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *resp, NSError *error) {
-        Log(LOG_D, @"Sunshine /cancel: %@ %@", resp, error);
-        [session invalidateAndCancel];
-    }] resume];
-}
-
-// Accept Sunshine's self-signed cert for the /cancel request.
-// This is a fire-and-forget operational call; cert pinning failure would just
-// mean Sunshine keeps streaming until its own timeout, which is worse.
-- (void)URLSession:(NSURLSession *)session didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
- completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition, NSURLCredential *))completionHandler {
-    if ([challenge.protectionSpace.authenticationMethod isEqualToString:NSURLAuthenticationMethodServerTrust]) {
-        completionHandler(NSURLSessionAuthChallengeUseCredential,
-                          [NSURLCredential credentialForTrust:challenge.protectionSpace.serverTrust]);
-    } else {
-        completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, nil);
-    }
+    HttpManager *manager = [[HttpManager alloc] initWithAddress:self.sunshineHost
+                                                    httpsPort:self.sunshineHttpsPort
+                                                   serverCert:self.sunshineServerCert];
+    NSMutableURLRequest *request = [[manager newQuitAppRequest] mutableCopy];
+    if (!request) return;
+    request.timeoutInterval = 3;
+    HttpResponse *response = [[HttpResponse alloc] init];
+    [manager executeRequestSynchronously:[HttpRequest requestForResponse:response withUrlRequest:request]];
+    HydraLog(@"Sunshine /cancel completed: status=%d message=%@", response.statusCode, response.statusMessage);
 }
 
 - (NSDictionary *)streamStatsSnapshot {
     return [self.streamVC streamStatsSnapshot];
 }
 
+- (void)finishStop {
+    self.streamVC = nil;
+    if (self.terminalError && [self.delegate respondsToSelector:@selector(streamSessionDidFailWithError:)]) {
+        [self.delegate streamSessionDidFailWithError:self.terminalError];
+    } else if ([self.delegate respondsToSelector:@selector(streamSessionDidStop)]) {
+        [self.delegate streamSessionDidStop];
+    }
+}
+
 - (void)stop {
-    HydraLog(@"HydraStreamSession: stop() called — sending /cancel + dismissing VC");
-    // Stop the StreamManager/Connection before dismissing so LiStartConnection()
-    // returns and ArCleanup closes the SDL audio device. Without this the audio
-    // stream keeps playing in the background until Sunshine times out.
-    [self.streamVC hydraStop];
-    [self sendCancelToSunshine];
     dispatch_async(dispatch_get_main_queue(), ^{
-        // Dismiss from the PRESENTING side, not from streamVC itself.
-        // When "Exit experience" is tapped, UIKit fires the UIAlertAction handler
-        // while the action sheet dismiss animation is still in progress. Calling
-        // [streamVC dismiss] at that moment tells UIKit to chain-dismiss the action
-        // sheet (streamVC.presentedViewController), but UIKit is already dismissing
-        // it — the double-dismiss on the same VC triggers a hierarchy inconsistency
-        // assertion and crashes with nothing in the log. Dismissing from
-        // presentingViewController bypasses the action sheet's state machine entirely
-        // and cleanly tears down the full presentation stack from above.
-        UIViewController *presenting = self.streamVC.presentingViewController;
-        if (presenting) {
-            [presenting dismissViewControllerAnimated:NO completion:^{
-                self.streamVC = nil;
-                if ([self.delegate respondsToSelector:@selector(streamSessionDidStop)]) {
-                    [self.delegate streamSessionDidStop];
+        if (self.stopRequested) return;
+        self.stopRequested = YES;
+        HydraLog(@"HydraStreamSession: stopping — authenticated /cancel before returning to menu");
+        [self.streamVC hydraStop];
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            [self sendCancelToSunshine];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                // Dismiss the presenter, including any open exit action sheet.
+                UIViewController *presenting = self.streamVC.presentingViewController;
+                if (presenting) {
+                    [presenting dismissViewControllerAnimated:NO completion:^{ [self finishStop]; }];
+                } else {
+                    [self finishStop];
                 }
-            }];
-        } else {
-            self.streamVC = nil;
-            if ([self.delegate respondsToSelector:@selector(streamSessionDidStop)]) {
-                [self.delegate streamSessionDidStop];
-            }
-        }
+            });
+        });
     });
 }
 
