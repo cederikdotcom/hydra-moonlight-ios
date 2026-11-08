@@ -29,6 +29,13 @@
                   config:(StreamConfiguration*)streamConfig;
 - (void) showOnScreenControls;
 - (OnScreenControlsLevel) getCurrentOscState;
+// Opens the on screen keyboard when it is closed, closes it when it is open.
+//
+// Two callers: the three finger tap in `touchesBegan`, and the Keyboard row in
+// the in stream menu that `HydraStreamSession` builds. Exactly one place knows
+// how to raise the keyboard, so the gesture and the menu can never drift apart
+// (issue #1149).
+- (void) toggleKeyboard;
 
 #if !TARGET_OS_TV
 - (void) updateCursorLocation:(CGPoint)location isMouse:(BOOL)isMouse;

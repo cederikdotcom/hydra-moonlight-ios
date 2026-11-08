@@ -213,6 +213,21 @@ void HydraLog(NSString *format, ...) {
                                                   style:UIAlertActionStyleDefault
                                                 handler:^(UIAlertAction *a) { cb(); }]];
     }
+    // Issue #1149. The keyboard was reachable ONLY by a three finger tap on the
+    // stream, with no button and no hint, so the owner reached a game's login
+    // screen and had no way to type. The gesture still works and is unchanged;
+    // this row is the discoverable route to the same call.
+    //
+    // It is deliberately NOT guarded on whether a hardware keyboard is present.
+    // A hardware keyboard changes on screen control suppression in
+    // ControllerSupport (hasKeyboardOrMouse at :373, read at :955 and :1064),
+    // and an operator who cannot find this row would have no way to tell the
+    // difference between "hidden on purpose" and "broken".
+    [alert addAction:[UIAlertAction actionWithTitle:@"Keyboard"
+                                              style:UIAlertActionStyleDefault
+                                            handler:^(UIAlertAction *a) {
+        [self.streamVC toggleKeyboard];
+    }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Exit experience"
                                               style:UIAlertActionStyleDestructive
                                             handler:^(UIAlertAction *a) { [self stop]; }]];

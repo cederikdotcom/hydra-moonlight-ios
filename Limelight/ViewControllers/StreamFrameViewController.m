@@ -780,4 +780,11 @@
     return [_streamMan streamStatsSnapshot];
 }
 
+// Issue #1149. Same forwarding shape as `showOnScreenControls` and
+// `getCurrentOscState`: the view controller owns the StreamView, so it is the
+// one place that can hand the keyboard to a caller above it.
+- (void)toggleKeyboard {
+    [_streamView toggleKeyboard];
+}
+
 @end
