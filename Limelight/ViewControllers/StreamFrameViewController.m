@@ -141,8 +141,15 @@
     // Stage Manager and system edge swipe gestures, causing an immediate
     // accidental exit on every stream start. Replaced with a 2-second long-press
     // that matches the kiosk UX and doesn't conflict with system gestures.
+    //
+    // The selector MUST carry its colon. `edgeSwiped` and `edgeSwiped:` are two
+    // different selectors, only the second one exists, and a gesture recognizer
+    // that is given the first one aborts the application the moment the gesture
+    // fires. That was the crash in issue 1151, reachable on every stream since
+    // before this long press replaced the edge swipe, because the edge swipe
+    // carried the same missing colon.
     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc]
-                                               initWithTarget:self action:@selector(edgeSwiped)];
+                                               initWithTarget:self action:@selector(edgeSwiped:)];
     longPress.minimumPressDuration = 2.0;
     [self.view addGestureRecognizer:longPress];
 #endif
