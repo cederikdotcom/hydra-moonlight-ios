@@ -61,6 +61,10 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     [keyInputField setAutocorrectionType:UITextAutocorrectionTypeNo];
     [keyInputField setAutocapitalizationType:UITextAutocapitalizationTypeNone];
     [keyInputField setSpellCheckingType:UITextSpellCheckingTypeNo];
+    // Issue 1153. Inert until the keyboard is deliberately opened. A zero sized
+    // buffer field must not be reachable by a touch or by anything the system
+    // routes into the responder chain.
+    keyInputField.userInteractionEnabled = NO;
     [self addSubview:keyInputField];
     
 #if TARGET_OS_TV
@@ -377,7 +381,7 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
         [touchHandler touchesBegan:touches withEvent:event];
         
         if ([[event allTouches] count] == 3) {
-            [self toggleKeyboard];
+            [self toggleKeyboardFromSource:@"three finger tap"];
         }
     }
 }
@@ -390,12 +394,18 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
 // undiscoverable gesture left the owner at a game's login screen with no way to
 // type and no way to find out there was one.
 - (void) toggleKeyboard {
+    [self toggleKeyboardFromSource:@"unnamed caller"];
+}
+
+- (void) toggleKeyboardFromSource:(NSString *)source {
     if (isInputingText) {
-        Log(LOG_D, @"Closing the keyboard");
+        HydraLog(@"Keyboard: closing (%@)", source);
         [keyInputField resignFirstResponder];
+        keyInputField.userInteractionEnabled = NO;
         isInputingText = false;
     } else {
-        Log(LOG_D, @"Opening the keyboard");
+        HydraLog(@"Keyboard: opening (%@)", source);
+        keyInputField.userInteractionEnabled = YES;
         // Prepare the textbox used to capture keyboard events.
         keyInputField.delegate = self;
         keyInputField.text = @"0";
@@ -830,6 +840,21 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
         LiSendKeyboardEvent([keyCode shortValue], KEY_ACTION_UP, 0);
     }
     [keysDown removeAllObjects];
+
+    // Issue 1153. iOS can end editing by routes this class does not control:
+    // the keyboard being dismissed, focus moving, the field losing first
+    // responder to anything else. Before this, `isInputingText` was cleared
+    // ONLY in toggleKeyboard and by the toolbar Done button, so after any other
+    // dismissal the application still believed the keyboard was open. The next
+    // three finger tap then CLOSED an already closed keyboard, and the capture
+    // field was left interactive inside a view driven by a game controller.
+    //
+    // The recorded state must never outlive the keyboard.
+    if (isInputingText) {
+        HydraLog(@"Keyboard: editing ended outside toggleKeyboard, clearing the flag");
+    }
+    isInputingText = false;
+    keyInputField.userInteractionEnabled = NO;
 }
 
 - (void)onKeyboardPressed:(UITextField *)textField {

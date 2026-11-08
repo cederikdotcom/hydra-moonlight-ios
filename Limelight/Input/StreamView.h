@@ -36,6 +36,7 @@
 // how to raise the keyboard, so the gesture and the menu can never drift apart
 // (issue #1149).
 - (void) toggleKeyboard;
+- (void) toggleKeyboardFromSource:(NSString *)source;
 
 #if !TARGET_OS_TV
 - (void) updateCursorLocation:(CGPoint)location isMouse:(BOOL)isMouse;
