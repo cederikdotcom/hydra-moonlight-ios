@@ -7,6 +7,7 @@
 //
 
 #import "StreamView.h"
+#import "HydraLog.h"
 #include <Limelight.h>
 #import "DataManager.h"
 #import "ControllerSupport.h"
