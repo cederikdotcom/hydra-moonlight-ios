@@ -26,6 +26,12 @@
 // Called by returnToMainFrame instead of popToRootViewControllerAnimated when set.
 // HydraStreamSession sets this to properly dismiss the modal and notify the Swift layer.
 @property (nonatomic, copy) void(^hydraReturnToMainFrame)(void);
+// YES once the person in front of the iPad asked to leave the stream, with the
+// hold gesture or with the controller combination. It stays NO when the stream
+// ends for any other reason: the host closed the experience, the inactivity
+// timer expired, or the application went to the background. HydraStreamSession
+// reads it to tell a wanted exit from a lost connection (issue #1154).
+@property (nonatomic, assign) BOOL hydraExitWasUserInitiated;
 // Diagnostic callbacks — wired by HydraStreamSession to forward log-worthy events
 // that are otherwise only visible in the Xcode console (NSLog/Log(LOG_I, ...)).
 @property (nonatomic, copy) void(^hydraStageStarted)(NSString *stage);

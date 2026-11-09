@@ -45,6 +45,7 @@ void HydraLog(NSString *format, ...) {
 @property (nonatomic, assign) unsigned short sunshineHttpsPort;
 @property (nonatomic, strong) NSData *sunshineServerCert;
 @property (nonatomic, assign) BOOL stopRequested;
+@property (nonatomic, assign) BOOL stopWasRequestedByUser;
 @property (nonatomic, strong) NSError *terminalError;
 @end
 
@@ -65,6 +66,7 @@ void HydraLog(NSString *format, ...) {
     HydraLog(@"HydraStreamSession: startWithHost host=%@ app=%@ %dx%d %dkbps cert=%luB",
              host, appName, width, height, bitrateKbps, (unsigned long)serverCert.length);
     self.stopRequested = NO;
+    self.stopWasRequestedByUser = NO;
     self.terminalError = nil;
     self.presenter = presenter;
     self.sunshineHost = host;
@@ -149,9 +151,17 @@ void HydraLog(NSString *format, ...) {
     // Since we present it as a modal, that call is a no-op. This block receives that
     // signal instead and calls stop() which properly dismisses the VC and fires
     // streamSessionDidStop, resetting the Swift state machine.
+    __weak StreamFrameViewController *weakVC = vc;
     vc.hydraReturnToMainFrame = ^{
         HydraStreamSession *s = weakSelf;
         if (!s) return;
+        // returnToMainFrame is the one door for every end of stream, wanted or
+        // not. Only the view controller knows which one it was, so read the
+        // flag it set before it called us (issue #1154).
+        if (weakVC.hydraExitWasUserInitiated) {
+            s.stopWasRequestedByUser = YES;
+            HydraLog(@"HydraStreamSession: the exit was asked for, this is not an interruption");
+        }
         [s stop];
     };
 
@@ -230,7 +240,11 @@ void HydraLog(NSString *format, ...) {
     }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Exit experience"
                                               style:UIAlertActionStyleDestructive
-                                            handler:^(UIAlertAction *a) { [self stop]; }]];
+                                            handler:^(UIAlertAction *a) {
+        self.stopWasRequestedByUser = YES;
+        HydraLog(@"HydraStreamSession: exit asked for from the in stream menu");
+        [self stop];
+    }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
                                               style:UIAlertActionStyleCancel
                                             handler:nil]];
@@ -275,7 +289,7 @@ void HydraLog(NSString *format, ...) {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (self.stopRequested) return;
         self.stopRequested = YES;
-        HydraLog(@"HydraStreamSession: stopping — authenticated /cancel before returning to menu");
+        HydraLog(@"HydraStreamSession: stopping, authenticated /cancel before returning to menu");
         [self.streamVC hydraStop];
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
             [self sendCancelToSunshine];

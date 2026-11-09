@@ -74,6 +74,15 @@
 // Safe to call on the main thread at any frequency. Returns nil when stream is inactive.
 - (nullable NSDictionary *)streamStatsSnapshot;
 
+/// YES once this session ended because somebody asked it to end: the exit row
+/// in the in stream menu, the hold gesture on the video, or the controller
+/// combination. It stays NO when the stream ends on its own, so the Swift
+/// layer can show the red failure panel only for a real interruption.
+///
+/// The readwrite declaration stays private in the implementation. Swift reads
+/// this property as stopWasRequestedByUser (issue #1154).
+@property (nonatomic, assign, readonly) BOOL stopWasRequestedByUser;
+
 // Disconnect and dismiss the stream view.
 - (void)stop;
 

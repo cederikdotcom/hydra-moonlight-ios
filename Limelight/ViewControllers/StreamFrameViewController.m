@@ -403,6 +403,7 @@
 - (void)edgeSwiped:(UIGestureRecognizer *)recognizer {
     if (recognizer.state != UIGestureRecognizerStateBegan) return;
     Log(LOG_I, @"User held to end stream");
+    self.hydraExitWasUserInitiated = YES;
     [self returnToMainFrame];
 }
 
@@ -717,7 +718,8 @@
 
 - (void) streamExitRequested {
     Log(LOG_I, @"Gamepad combo requested stream exit");
-    
+
+    self.hydraExitWasUserInitiated = YES;
     [self returnToMainFrame];
 }
 
