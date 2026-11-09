@@ -9,6 +9,7 @@
 #import "Limelight.h"
 #import "HydraLog.h"
 
+#include <string.h>
 #include <unistd.h>
 
 // The virtual gamepad reports its arrival to the host through the branch in
@@ -35,12 +36,52 @@ static const int HydraSyntheticControllerButtonFlags[] = {
     LS_CLK_FLAG, RS_CLK_FLAG,
 };
 
-// A script may not pin the virtual gamepad for an unreasonable time. These
-// agree with the limits the cluster enforces before it queues a script; they
-// are repeated here because this layer must stand on its own if it is ever
-// driven from somewhere else.
+// The keyboard half, issue 1159. A script could press fourteen buttons and
+// move the sticks, and could not produce a character, which stopped it at
+// every text field in an experience.
+//
+// Key codes are Windows virtual key codes, which is what LiSendKeyboardEvent
+// takes. StreamView.m already sends them that way for the on screen keyboard,
+// with 0x0d for Return and 0x08 for Backspace, so this table follows the same
+// precedent rather than inventing a second convention.
+//
+// The arrow keys are deliberately NOT named "up", "down", "left" and "right".
+// Those four names already mean the d-pad in this vocabulary, and the sender
+// script writes a step as a word, where "up:50" is a d-pad press. A shared
+// name would quietly turn a keyboard step into a gamepad step.
+static NSString *const HydraSyntheticControllerKeyNames[] = {
+    @"enter", @"escape", @"backspace", @"tab", @"space",
+    @"delete", @"insert",
+    @"home", @"end", @"page_up", @"page_down",
+    @"arrow_up", @"arrow_down", @"arrow_left", @"arrow_right",
+    @"function_one", @"function_two", @"function_three", @"function_four",
+    @"function_five", @"function_six", @"function_seven", @"function_eight",
+    @"function_nine", @"function_ten", @"function_eleven", @"function_twelve",
+};
+static const short HydraSyntheticControllerKeyCodes[] = {
+    0x0d, 0x1b, 0x08, 0x09, 0x20,
+    0x2e, 0x2d,
+    0x24, 0x23, 0x21, 0x22,
+    0x26, 0x28, 0x25, 0x27,
+    0x70, 0x71, 0x72, 0x73,
+    0x74, 0x75, 0x76, 0x77,
+    0x78, 0x79, 0x7a, 0x7b,
+};
+static const NSUInteger HydraSyntheticControllerKeyNameCount = 27;
+
+// A script may not pin the virtual gamepad for an unreasonable time, and may
+// not turn a keyboard into a file transfer. These agree with the limits the
+// cluster enforces before it queues a script; they are repeated here because
+// this layer must stand on its own if it is ever driven from somewhere else.
+//
+// Text is measured in UTF-8 bytes, which is what LiSendUtf8TextEvent carries
+// and what the cluster counts, so the two layers give the same answer for an
+// accent or an emoji.
 static const NSInteger HydraSyntheticControllerMaximumStepMilliseconds = 10000;
 static const NSUInteger HydraSyntheticControllerMaximumSteps = 64;
+static const NSUInteger HydraSyntheticControllerMaximumTextBytesPerStep = 256;
+static const NSUInteger HydraSyntheticControllerMaximumTextBytesPerScript = 1024;
+static const NSUInteger HydraSyntheticControllerMaximumModifiersPerStep = 4;
 
 @interface HydraSyntheticController ()
 @property (nonatomic, weak) ControllerSupport *controllerSupport;
@@ -69,6 +110,51 @@ static int HydraSyntheticControllerFlagForName(NSString *name) {
             return HydraSyntheticControllerButtonFlags[index];
         }
     }
+    return 0;
+}
+
+// Returns the Windows virtual key code for a key name, or 0 when the name is
+// not one a script may use. A letter or a digit is named by itself, so that a
+// modifier combination such as control and a reads the way an operator says
+// it. Only lowercase is accepted, because the cluster accepts only lowercase,
+// and the two layers must refuse the same scripts.
+static short HydraSyntheticControllerKeyCodeForName(NSString *name) {
+    for (NSUInteger index = 0; index < HydraSyntheticControllerKeyNameCount; index++) {
+        if ([HydraSyntheticControllerKeyNames[index] isEqualToString:name]) {
+            return HydraSyntheticControllerKeyCodes[index];
+        }
+    }
+    if (name.length == 1) {
+        unichar character = [name characterAtIndex:0];
+        if (character >= 'a' && character <= 'z') {
+            return (short)(character - 'a' + 0x41);
+        }
+        if (character >= '0' && character <= '9') {
+            return (short)(character - '0' + 0x30);
+        }
+    }
+    return 0;
+}
+
+// Returns the modifier bit for a modifier name, or 0 when the name is unknown.
+static char HydraSyntheticControllerModifierForName(NSString *name) {
+    if ([name isEqualToString:@"shift"])   { return MODIFIER_SHIFT; }
+    if ([name isEqualToString:@"control"]) { return MODIFIER_CTRL; }
+    if ([name isEqualToString:@"alt"])     { return MODIFIER_ALT; }
+    if ([name isEqualToString:@"meta"])    { return MODIFIER_META; }
+    return 0;
+}
+
+// Returns the Windows virtual key code of the modifier key itself, so it can
+// be held down around the key the script asked for. KeyboardSupport.m uses
+// exactly these codes for a hardware keyboard, and sendLowLevelEvent: holds
+// the modifier key down the same way. A bare modifier byte is not enough on
+// every host, so this follows the path that already works.
+static short HydraSyntheticControllerModifierKeyCodeForName(NSString *name) {
+    if ([name isEqualToString:@"shift"])   { return 0x10; }
+    if ([name isEqualToString:@"control"]) { return 0x11; }
+    if ([name isEqualToString:@"alt"])     { return 0x12; }
+    if ([name isEqualToString:@"meta"])    { return 0x5B; }
     return 0;
 }
 
@@ -113,27 +199,102 @@ static unsigned char HydraSyntheticControllerTrigger(NSDictionary *step, NSStrin
     // should never arrive. It is checked again here because this layer must
     // stand on its own, and because a wrong type reaching fast enumeration
     // would take the application down rather than refuse the script.
-    for (id step in steps) {
-        if (![step isKindOfClass:[NSDictionary class]]) {
+    NSUInteger totalTextBytes = 0;
+    for (id eachStep in steps) {
+        if (![eachStep isKindOfClass:[NSDictionary class]]) {
             HydraLog(@"HydraSyntheticController: refusing the script, a step is not a dictionary");
             return NO;
         }
-        id buttons = ((NSDictionary *)step)[@"buttons"];
-        if (buttons == nil) {
-            continue;
+        NSDictionary *step = (NSDictionary *)eachStep;
+
+        id buttons = step[@"buttons"];
+        if (buttons != nil) {
+            if (![buttons isKindOfClass:[NSArray class]]) {
+                HydraLog(@"HydraSyntheticController: refusing the script, buttons is not a list");
+                return NO;
+            }
+            for (id name in (NSArray *)buttons) {
+                if (![name isKindOfClass:[NSString class]] ||
+                    HydraSyntheticControllerFlagForName((NSString *)name) == 0) {
+                    HydraLog(@"HydraSyntheticController: refusing the script, "
+                             @"the virtual gamepad has no button named %@", name);
+                    return NO;
+                }
+            }
         }
-        if (![buttons isKindOfClass:[NSArray class]]) {
-            HydraLog(@"HydraSyntheticController: refusing the script, buttons is not a list");
-            return NO;
+
+        // The keyboard half, issue 1159.
+        id text = step[@"text"];
+        if (text != nil) {
+            if (![text isKindOfClass:[NSString class]]) {
+                HydraLog(@"HydraSyntheticController: refusing the script, text is not a string");
+                return NO;
+            }
+            NSUInteger bytes = [(NSString *)text lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+            if (bytes > HydraSyntheticControllerMaximumTextBytesPerStep) {
+                HydraLog(@"HydraSyntheticController: refusing the script, one step holds %lu "
+                         @"bytes of text and the limit is %lu",
+                         (unsigned long)bytes,
+                         (unsigned long)HydraSyntheticControllerMaximumTextBytesPerStep);
+                return NO;
+            }
+            totalTextBytes += bytes;
         }
-        for (id name in (NSArray *)buttons) {
-            if (![name isKindOfClass:[NSString class]] ||
-                HydraSyntheticControllerFlagForName((NSString *)name) == 0) {
-                HydraLog(@"HydraSyntheticController: refusing the script, "
-                         @"the virtual gamepad has no button named %@", name);
+
+        id keyName = step[@"key"];
+        if (keyName != nil) {
+            if (![keyName isKindOfClass:[NSString class]]) {
+                HydraLog(@"HydraSyntheticController: refusing the script, key is not a string");
+                return NO;
+            }
+            if (HydraSyntheticControllerKeyCodeForName((NSString *)keyName) == 0) {
+                HydraLog(@"HydraSyntheticController: refusing the script, there is no key named "
+                         @"%@ (an arrow key is arrow_up, arrow_down, arrow_left or arrow_right)",
+                         keyName);
                 return NO;
             }
         }
+        if (text != nil && keyName != nil) {
+            HydraLog(@"HydraSyntheticController: refusing the script, "
+                     @"a step sets both text and key");
+            return NO;
+        }
+
+        id modifiers = step[@"modifiers"];
+        if (modifiers != nil) {
+            if (![modifiers isKindOfClass:[NSArray class]]) {
+                HydraLog(@"HydraSyntheticController: refusing the script, "
+                         @"modifiers is not a list");
+                return NO;
+            }
+            if (keyName == nil) {
+                HydraLog(@"HydraSyntheticController: refusing the script, a step sets modifiers "
+                         @"and no key, and a modifier needs a key to hold");
+                return NO;
+            }
+            if (((NSArray *)modifiers).count > HydraSyntheticControllerMaximumModifiersPerStep) {
+                HydraLog(@"HydraSyntheticController: refusing the script, a step holds more than "
+                         @"%lu modifiers",
+                         (unsigned long)HydraSyntheticControllerMaximumModifiersPerStep);
+                return NO;
+            }
+            for (id name in (NSArray *)modifiers) {
+                if (![name isKindOfClass:[NSString class]] ||
+                    HydraSyntheticControllerModifierForName((NSString *)name) == 0) {
+                    HydraLog(@"HydraSyntheticController: refusing the script, there is no "
+                             @"modifier named %@, the modifiers are shift, control, alt and meta",
+                             name);
+                    return NO;
+                }
+            }
+        }
+    }
+    if (totalTextBytes > HydraSyntheticControllerMaximumTextBytesPerScript) {
+        HydraLog(@"HydraSyntheticController: refusing the script, it holds %lu bytes of text "
+                 @"and the limit for one script is %lu",
+                 (unsigned long)totalTextBytes,
+                 (unsigned long)HydraSyntheticControllerMaximumTextBytesPerScript);
+        return NO;
     }
 
     self.abandonRequested = NO;
@@ -190,6 +351,27 @@ static unsigned char HydraSyntheticControllerTrigger(NSDictionary *step, NSStrin
             continue;
         }
 
+        // A keyboard step goes straight to the host, below the gamepad. The
+        // live reference was checked above, so the connection is still up.
+        // The gamepad is left at neutral, which is why a step may not mix the
+        // two: a key and a button in one step would need one hold to mean two
+        // different things.
+        NSString *text = step[@"text"];
+        if ([text isKindOfClass:[NSString class]] && text.length > 0) {
+            [self typeText:text atStep:stepNumber of:steps.count];
+            [self sleepMilliseconds:holdMilliseconds];
+            continue;
+        }
+        NSString *keyName = step[@"key"];
+        if ([keyName isKindOfClass:[NSString class]] && keyName.length > 0) {
+            [self pressKeyNamed:keyName
+                  withModifiers:step[@"modifiers"]
+                forMilliseconds:holdMilliseconds
+                         atStep:stepNumber
+                             of:steps.count];
+            continue;
+        }
+
         int buttonFlags = 0;
         for (NSString *name in step[@"buttons"]) {
             buttonFlags |= HydraSyntheticControllerFlagForName(name);
@@ -225,6 +407,86 @@ static unsigned char HydraSyntheticControllerTrigger(NSDictionary *step, NSStrin
     }
 
     HydraLog(@"HydraSyntheticController: script finished");
+}
+
+// Types a run of text as one UTF-8 text event, which is how the on screen
+// keyboard in StreamView.m sends a string the host cannot express as plain key
+// events. The host decides where the characters land, so this needs a text
+// field with focus in the experience, exactly as a person typing would.
+//
+// Runs on the private serial queue.
+- (void)typeText:(NSString *)text atStep:(NSUInteger)stepNumber of:(NSUInteger)stepCount {
+    const char *utf8Text = [text UTF8String];
+    if (utf8Text == NULL) {
+        HydraLog(@"HydraSyntheticController: step %lu of %lu could not be encoded as UTF-8",
+                 (unsigned long)stepNumber, (unsigned long)stepCount);
+        return;
+    }
+    size_t length = strlen(utf8Text);
+
+    // The text itself is never logged. It is operator input that travels in
+    // the clear through the cluster, and a log that repeats it would be one
+    // more place it lands.
+    HydraLog(@"HydraSyntheticController: typing %lu bytes of text at step %lu of %lu",
+             (unsigned long)length, (unsigned long)stepNumber, (unsigned long)stepCount);
+    LiSendUtf8TextEvent(utf8Text, (unsigned int)length);
+}
+
+// Presses a named key, holds it, and releases it.
+//
+// A modifier is held as its own key around the key press, and is also carried
+// in the modifier byte. That is what sendLowLevelEvent: in StreamView.m does
+// for a hardware keyboard, and a host that only watches the modifier keys
+// would miss a bare modifier byte.
+//
+// Runs on the private serial queue.
+- (void)pressKeyNamed:(NSString *)keyName
+        withModifiers:(id)modifierNames
+      forMilliseconds:(NSInteger)holdMilliseconds
+               atStep:(NSUInteger)stepNumber
+                   of:(NSUInteger)stepCount {
+    short keyCode = HydraSyntheticControllerKeyCodeForName(keyName);
+    if (keyCode == 0) {
+        HydraLog(@"HydraSyntheticController: step %lu of %lu names no key this head knows",
+                 (unsigned long)stepNumber, (unsigned long)stepCount);
+        return;
+    }
+
+    char modifierByte = 0;
+    NSMutableArray<NSNumber *> *modifierKeyCodes = [NSMutableArray array];
+    if ([modifierNames isKindOfClass:[NSArray class]]) {
+        for (id name in (NSArray *)modifierNames) {
+            if (![name isKindOfClass:[NSString class]]) {
+                continue;
+            }
+            char bit = HydraSyntheticControllerModifierForName((NSString *)name);
+            short modifierKeyCode = HydraSyntheticControllerModifierKeyCodeForName((NSString *)name);
+            if (bit == 0 || modifierKeyCode == 0) {
+                continue;
+            }
+            modifierByte |= bit;
+            [modifierKeyCodes addObject:@(modifierKeyCode)];
+        }
+    }
+
+    HydraLog(@"HydraSyntheticController: pressing key %@ with %lu modifier(s) at step %lu of %lu",
+             keyName, (unsigned long)modifierKeyCodes.count,
+             (unsigned long)stepNumber, (unsigned long)stepCount);
+
+    for (NSNumber *modifierKeyCode in modifierKeyCodes) {
+        LiSendKeyboardEvent(modifierKeyCode.shortValue, KEY_ACTION_DOWN, modifierByte);
+    }
+    LiSendKeyboardEvent(keyCode, KEY_ACTION_DOWN, modifierByte);
+
+    [self sleepMilliseconds:holdMilliseconds];
+
+    // The release always runs, even when the hold was cut short by an abandon
+    // or by the stream ending. A key left down on the host is worse than a
+    // late release: nothing else will ever lift it.
+    LiSendKeyboardEvent(keyCode, KEY_ACTION_UP, modifierByte);
+    for (NSNumber *modifierKeyCode in [modifierKeyCodes reverseObjectEnumerator]) {
+        LiSendKeyboardEvent(modifierKeyCode.shortValue, KEY_ACTION_UP, modifierByte);
+    }
 }
 
 // Sleeps in short slices so that a long hold does not delay the teardown of a
