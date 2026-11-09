@@ -112,6 +112,7 @@
     _spinner.center = CGPointMake(self.view.frame.size.width / 2, self.view.frame.size.height / 2 - _stageLabel.frame.size.height - _spinner.frame.size.height);
     
     _controllerSupport = [[ControllerSupport alloc] initWithConfig:self.streamConfig delegate:self];
+    _hydraControllerSupport = _controllerSupport;
     _inactivityTimer = nil;
     
     _streamView = [[StreamView alloc] initWithFrame:self.view.bounds];

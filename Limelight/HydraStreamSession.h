@@ -83,6 +83,24 @@
 /// this property as stopWasRequestedByUser (issue #1154).
 @property (nonatomic, assign, readonly) BOOL stopWasRequestedByUser;
 
+/// Runs a scripted controller sequence inside this live stream.
+///
+/// Each step of `steps` is a dictionary that either holds a controller state
+/// for `hold_milliseconds` or rests at neutral for `wait_milliseconds`. The
+/// recognised keys are `buttons` (an array of names spelled in full),
+/// `left_trigger`, `right_trigger`, `left_stick_x`, `left_stick_y`,
+/// `right_stick_x` and `right_stick_y`.
+///
+/// The steps go through the same method a physical gamepad ends its update
+/// with, so the host receives events it cannot tell apart from a person holding
+/// the controller. The controller exit combination is detected on this path
+/// too, so a scripted combination really does leave the stream.
+///
+/// Returns NO when there is no live stream, or when a step names a button the
+/// virtual gamepad does not have. Steps run on a private queue, so this method
+/// returns before the sequence has played (issue #1155).
+- (BOOL)runControllerInputScript:(NSArray<NSDictionary<NSString *, id> *> *)steps;
+
 // Disconnect and dismiss the stream view.
 - (void)stop;
 

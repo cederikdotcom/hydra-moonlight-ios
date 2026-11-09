@@ -38,6 +38,11 @@
 @property (nonatomic, copy) void(^hydraConnectionStartedCallback)(void);
 @property (nonatomic, copy) void(^hydraApplicationResignActiveCallback)(void);
 
+// The controller plumbing for this stream. HydraStreamSession reaches it to
+// drive a scripted gamepad sequence through the same path a physical gamepad
+// uses (issue 1155). It is nil until viewDidLoad has run.
+@property (nonatomic, readonly, nullable) ControllerSupport *hydraControllerSupport;
+
 -(void)updatePreferredDisplayMode:(BOOL)streamActive;
 // Returns a live snapshot of stream metrics (RTT, FPS, host latency, audio queue).
 // Returns nil when the stream is not yet active.

@@ -5,7 +5,9 @@
 
 #import "HydraStreamSession.h"
 #import "HydraLog.h"
+#import "HydraSyntheticController.h"
 #import "StreamFrameViewController.h"
+#import "ControllerSupport.h"
 #import "StreamConfiguration.h"
 #import "HttpManager.h"
 
@@ -47,6 +49,7 @@ void HydraLog(NSString *format, ...) {
 @property (nonatomic, assign) BOOL stopRequested;
 @property (nonatomic, assign) BOOL stopWasRequestedByUser;
 @property (nonatomic, strong) NSError *terminalError;
+@property (nonatomic, strong) HydraSyntheticController *syntheticController;
 @end
 
 @implementation HydraStreamSession
@@ -168,7 +171,7 @@ void HydraLog(NSString *format, ...) {
     HydraLog(@"HydraStreamSession: presenting StreamFrameViewController (dispatching to main)...");
     dispatch_async(dispatch_get_main_queue(), ^{
         [presenter presentViewController:vc animated:NO completion:^{
-            HydraLog(@"HydraStreamSession: StreamFrameViewController presented — StreamManager running");
+            HydraLog(@"HydraStreamSession: StreamFrameViewController presented, StreamManager running");
             [self addExitMenuToVC:vc];
             if ([self.delegate respondsToSelector:@selector(streamSessionDidConnect)]) {
                 [self.delegate streamSessionDidConnect];
@@ -285,11 +288,32 @@ void HydraLog(NSString *format, ...) {
     }
 }
 
+- (BOOL)runControllerInputScript:(NSArray<NSDictionary<NSString *, id> *> *)steps {
+    if (self.stopRequested) {
+        HydraLog(@"HydraStreamSession: refusing an input script, this session is stopping");
+        return NO;
+    }
+    ControllerSupport *support = self.streamVC.hydraControllerSupport;
+    if (support == nil) {
+        HydraLog(@"HydraStreamSession: refusing an input script, there is no live stream");
+        return NO;
+    }
+    if (self.syntheticController == nil) {
+        self.syntheticController =
+            [[HydraSyntheticController alloc] initWithControllerSupport:support];
+    }
+    return [self.syntheticController runSteps:steps];
+}
+
 - (void)stop {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (self.stopRequested) return;
         self.stopRequested = YES;
         HydraLog(@"HydraStreamSession: stopping, authenticated /cancel before returning to menu");
+        // Let go of anything a script was holding, so a stream never ends with
+        // a button still pressed on the host side (issue #1155).
+        [self.syntheticController releaseEverything];
+        self.syntheticController = nil;
         [self.streamVC hydraStop];
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
             [self sendCancelToSunshine];
