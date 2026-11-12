@@ -7,6 +7,7 @@
 #import "HydraLog.h"
 #import "HydraSyntheticController.h"
 #import "StreamFrameViewController.h"
+#import "VideoDecoderRenderer.h"
 #import "ControllerSupport.h"
 #import "StreamConfiguration.h"
 #import "HttpManager.h"
@@ -303,6 +304,50 @@ void HydraLog(NSString *format, ...) {
             [[HydraSyntheticController alloc] initWithControllerSupport:support];
     }
     return [self.syntheticController runSteps:steps];
+}
+
+#pragma mark - Head side frame capture (issue 1162)
+
+- (BOOL)captureVideoFrameWithCompletion:(HydraFrameCaptureCompletion)completion {
+    VideoDecoderRenderer *renderer = [self liveRendererForCapture];
+    if (renderer == nil) {
+        completion(nil, [NSError errorWithDomain:HydraFrameCaptureErrorDomain
+                                            code:HydraFrameCaptureErrorNoPicture
+                                        userInfo:@{NSLocalizedDescriptionKey: @"there is no live stream to capture"}]);
+        return NO;
+    }
+    return [renderer hydraCaptureVideoFrameWithCompletion:completion];
+}
+
+- (CGRect)videoRectInWindow {
+    VideoDecoderRenderer *renderer = [self liveRendererForCapture];
+    if (renderer == nil) {
+        return CGRectNull;
+    }
+    return [renderer hydraVideoRectInWindow];
+}
+
+- (void)withVideoBackgroundClear:(void (NS_NOESCAPE ^)(void))block {
+    VideoDecoderRenderer *renderer = [self liveRendererForCapture];
+    if (renderer == nil) {
+        block();
+        return;
+    }
+    [renderer hydraRunWithVideoBackgroundClear:block];
+}
+
+// The one place that decides whether there is a stream to capture, so all
+// three entry points above refuse for the same reason and log it once.
+- (nullable VideoDecoderRenderer *)liveRendererForCapture {
+    if (self.stopRequested) {
+        HydraLog(@"HydraStreamSession: refusing a frame capture, this session is stopping");
+        return nil;
+    }
+    VideoDecoderRenderer *renderer = self.streamVC.hydraVideoRenderer;
+    if (renderer == nil) {
+        HydraLog(@"HydraStreamSession: refusing a frame capture, there is no live stream");
+    }
+    return renderer;
 }
 
 - (void)stop {

@@ -234,6 +234,10 @@
     return _streamView;
 }
 
+- (VideoDecoderRenderer *)hydraVideoRenderer {
+    return _streamMan.hydraVideoRenderer;
+}
+
 - (void)willMoveToParentViewController:(UIViewController *)parent {
     // Only cleanup when we're being destroyed
     if (parent == nil) {

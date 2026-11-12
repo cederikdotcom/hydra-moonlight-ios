@@ -16,6 +16,12 @@ This fork adds `HydraStreamSession` — a minimal Objective-C API that lets Hydr
 | `Limelight/Input/NativeTouchHandler.m` | Sends `LiSendTouchEvent()` for true multi-touch passthrough; falls back to absolute mouse when host doesn't support it |
 | `Limelight/Input/StreamView.h` | Exposes `adjustCoordinatesForVideoArea:` and `getVideoAreaSize` (used by `NativeTouchHandler`) |
 | `Limelight/Input/StreamView.m` | Uses `NativeTouchHandler` instead of `RelativeTouchHandler`/`AbsoluteTouchHandler` |
+| `Limelight/Input/HydraSyntheticController.h` | Plays a scripted gamepad, text and key sequence into a live stream (issues 1155, 1159) |
+| `Limelight/Input/HydraSyntheticController.m` | Drives `ControllerSupport` and `LiSendUtf8TextEvent`/`LiSendKeyboardEvent` from a private serial queue |
+| `Limelight/Stream/HydraFrameCapture.h` | Decodes one key frame a second time so an admin screenshot shows the game, not a black rectangle (issue 1162) |
+| `Limelight/Stream/HydraFrameCapture.m` | `VTDecompressionSession` on a private serial queue; the main thread only retains the frame |
+| `Limelight/Stream/VideoDecoderRenderer.h` | Adds `hydraCaptureVideoFrameWithCompletion:`, `hydraVideoRectInWindow` and `hydraRunWithVideoBackgroundClear:` |
+| `Limelight/Stream/StreamManager.h` | Exposes `hydraVideoRenderer`, the only accessor for the renderer |
 
 ## How it's consumed
 

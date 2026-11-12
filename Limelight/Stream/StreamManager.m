@@ -138,6 +138,9 @@
         HydraLog(@"StreamManager: [main queue] creating VideoDecoderRenderer + Connection (VPN=%@)...",
                  [Utils isActiveNetworkVPN] ? @"YES" : @"NO");
         VideoDecoderRenderer* renderer = [[VideoDecoderRenderer alloc] initWithView:self->_renderView callbacks:self->_callbacks streamAspectRatio:(float)self->_config.width / (float)self->_config.height useFramePacing:self->_config.useFramePacing];
+        // Keep a handle so a screenshot can ask the renderer for a key frame
+        // (issue 1162). Assigned on the main queue, read on the main thread.
+        self->_hydraVideoRenderer = renderer;
         self->_connection = [[Connection alloc] initWithConfig:self->_config renderer:renderer connectionCallbacks:self->_callbacks];
         NSOperationQueue* opQueue = [[NSOperationQueue alloc] init];
         [opQueue addOperation:self->_connection];

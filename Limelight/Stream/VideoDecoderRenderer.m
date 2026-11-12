@@ -7,6 +7,7 @@
 //
 
 #import "VideoDecoderRenderer.h"
+#import "HydraLog.h"
 #import "StreamView.h"
 
 #include <libavcodec/avcodec.h>
@@ -35,6 +36,11 @@ extern int ff_isom_write_av1c(AVIOContext *pb, const uint8_t *buf, int size,
     
     CADisplayLink* _displayLink;
     BOOL framePacing;
+
+    // Decodes one key frame a second time so a screenshot can show the game
+    // (issue 1162). Built on first use, so a head that is never screenshotted
+    // never allocates it.
+    HydraFrameCapture* _hydraFrameCapture;
 }
 
 - (void)reinitializeDisplayLayer
@@ -142,6 +148,10 @@ int DrSubmitDecodeUnit(PDECODE_UNIT decodeUnit);
 - (void)stop
 {
     [_displayLink invalidate];
+
+    // A screenshot waiting on a key frame must not outlive the stream it was
+    // asked of (issue 1162). Whoever asked gets an answer either way.
+    [_hydraFrameCapture cancelPendingRequest];
 }
 
 #define NALU_START_PREFIX_SIZE 3
@@ -599,9 +609,16 @@ int DrSubmitDecodeUnit(PDECODE_UNIT decodeUnit);
     if (du->frameType == FRAME_TYPE_IDR) {
         // Ensure the layer is visible now
         self->displayLayer.hidden = NO;
-        
+
         // Tell our parent VC to hide the progress indicator
         [self->_callbacks videoContentShown];
+
+        // Offer the key frame to a waiting screenshot (issue 1162). When
+        // nothing is waiting this is one atomic boolean read, and when
+        // _hydraFrameCapture is nil it is a message to nil. When something is
+        // waiting the buffer is retained and handed to a private serial queue.
+        // Nothing decodes on this thread.
+        [_hydraFrameCapture offerIDRSampleBuffer:sampleBuffer];
     }
     
     // Dereference the buffers
@@ -678,6 +695,70 @@ int DrSubmitDecodeUnit(PDECODE_UNIT decodeUnit);
     if (metadataChanged) {
         LiRequestIdrFrame();
     }
+}
+
+#pragma mark - Head side frame capture (issue 1162)
+
+- (BOOL)hydraCaptureVideoFrameWithCompletion:(HydraFrameCaptureCompletion)completion
+{
+    // displayLayer.hidden stays YES until the first IDR frame has been
+    // enqueued, so this is the honest test for "there is a picture".
+    if (displayLayer == nil || displayLayer.hidden) {
+        HydraLog(@"VideoDecoderRenderer: refusing a frame capture, no key frame has been shown yet");
+        completion(nil, [NSError errorWithDomain:HydraFrameCaptureErrorDomain
+                                            code:HydraFrameCaptureErrorNoPicture
+                                        userInfo:@{NSLocalizedDescriptionKey: @"the stream has not shown a key frame yet"}]);
+        return NO;
+    }
+
+    if (_hydraFrameCapture == nil) {
+        _hydraFrameCapture = [[HydraFrameCapture alloc] init];
+    }
+
+    if (![_hydraFrameCapture requestFrameWithCompletion:completion]) {
+        return NO;
+    }
+
+    // setHdrMode: already calls this on a metadata change, so a key frame
+    // request is a known safe event on this connection. It is also the whole
+    // cost of a capture on the wire.
+    LiRequestIdrFrame();
+    return YES;
+}
+
+- (CGRect)hydraVideoRectInWindow
+{
+    if (displayLayer == nil || displayLayer.hidden || _view == nil) {
+        return CGRectNull;
+    }
+    if (_view.window == nil) {
+        return CGRectNull;
+    }
+
+    return [_view convertRect:displayLayer.frame toView:nil];
+}
+
+- (void)hydraRunWithVideoBackgroundClear:(void (NS_NOESCAPE ^)(void))block
+{
+    if (displayLayer == nil) {
+        block();
+        return;
+    }
+
+    CGColorRef previous = CGColorRetain(displayLayer.backgroundColor);
+    displayLayer.backgroundColor = [UIColor clearColor].CGColor;
+    @try {
+        block();
+    }
+    @finally {
+        displayLayer.backgroundColor = previous != NULL ? previous : [UIColor blackColor].CGColor;
+        CGColorRelease(previous);
+    }
+}
+
+- (void)hydraCancelPendingCapture
+{
+    [_hydraFrameCapture cancelPendingRequest];
 }
 
 @end

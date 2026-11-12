@@ -12,6 +12,8 @@
 
 #import <UIKit/UIKit.h>
 
+@class VideoDecoderRenderer;
+
 #if TARGET_OS_TV
 @import GameController;
 
@@ -42,6 +44,12 @@
 // drive a scripted gamepad sequence through the same path a physical gamepad
 // uses (issue 1155). It is nil until viewDidLoad has run.
 @property (nonatomic, readonly, nullable) ControllerSupport *hydraControllerSupport;
+
+// The renderer for this stream, forwarded from the StreamManager so a head
+// side screenshot can reach the display layer without anyone reaching into the
+// view hierarchy (issue 1162). Nil until the connection has been created, and
+// nil again once the stream has gone.
+@property (nonatomic, readonly, nullable) VideoDecoderRenderer *hydraVideoRenderer;
 
 -(void)updatePreferredDisplayMode:(BOOL)streamActive;
 // Returns a live snapshot of stream metrics (RTT, FPS, host latency, audio queue).

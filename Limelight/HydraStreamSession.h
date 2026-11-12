@@ -9,6 +9,8 @@
 
 #import <UIKit/UIKit.h>
 
+#import "HydraFrameCapture.h"
+
 @protocol HydraStreamSessionDelegate <NSObject>
 - (void)streamSessionDidConnect;
 - (void)streamSessionDidStop;
@@ -100,6 +102,38 @@
 /// virtual gamepad does not have. Steps run on a private queue, so this method
 /// returns before the sequence has played (issue #1155).
 - (BOOL)runControllerInputScript:(NSArray<NSDictionary<NSString *, id> *> *)steps;
+
+/// Captures the picture the stream is showing, for an admin screenshot that
+/// would otherwise be a black rectangle (issue 1162).
+///
+/// Asks the host for a key frame and decodes that one frame a second time with
+/// a session this application owns, because the AVSampleBufferDisplayLayer the
+/// video lives in never gives its pixels back and the render server composites
+/// it beyond the reach of drawHierarchy.
+///
+/// Returns NO, having called `completion` with an error, when there is no live
+/// stream, when no key frame has been shown yet, or when a capture is already
+/// waiting. `completion` runs on the main thread, exactly once, within two
+/// seconds either way.
+///
+/// This costs a key frame on the wire and a second decoder, so the caller rate
+/// limits it. It is for interface verification, not for operating a head: what
+/// an experience is rendering is the body's question to answer.
+- (BOOL)captureVideoFrameWithCompletion:(HydraFrameCaptureCompletion)completion;
+
+/// Where the picture sits in window coordinates, inside the letterbox. Read
+/// from the live display layer, so it is right in both orientations.
+/// CGRectNull when there is no picture.
+- (CGRect)videoRectInWindow;
+
+/// Runs `block` with the video surface's background colour cleared, so that a
+/// drawHierarchy pass inside it leaves a transparent hole where the video is
+/// instead of painting black over the frame drawn underneath.
+///
+/// Invisible on screen: decoded content covers the display layer exactly, so
+/// that colour is never seen during a stream. Main thread only, and the colour
+/// is restored whatever the block does.
+- (void)withVideoBackgroundClear:(void (NS_NOESCAPE ^)(void))block;
 
 // Disconnect and dismiss the stream view.
 - (void)stop;
